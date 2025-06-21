@@ -237,6 +237,14 @@ enum SCON_MASKS
     SCONMASK_SM0  = 0x80,
 };
 
+enum P3_MASKS
+{
+    P3MASK_INT0 = (1 << 2),
+    P3MASK_INT1 = (1 << 2),
+    P3MASK_T0 = (1 << 4),
+    P3MASK_T1 = (1 << 5),
+};
+
 enum ISR_VECTORS
 {
     ISR_RST  = 0x00,
