@@ -6,6 +6,7 @@ BIN := emu
 CFLAGS += -O2
 CFLAGS += -pipe
 CFLAGS += -g -Wall -Wextra -Wno-unused-parameter -Wshadow
+CFLAGS += -D__8052__
 
 # Uncomment to activate LTO
 #CFLAGS += -flto

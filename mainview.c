@@ -153,12 +153,21 @@ void build_main_view(struct em8051 *aCPU)
     mvwaddstr(rambox, 0, 4, memtypes[memmode]);
     ramview = subwin(rambox, 7, 29, 1, 1);
 
+    #ifdef __8052__
+    stackbox = subwin(stdscr, 8, 6, 0, 31);
+    box(stackbox,0,0);
+    mvwaddstr(stackbox, 0, 1, "Stck");
+    mvwaddstr(stackbox, 6, 0, ">");
+    mvwaddstr(stackbox, 6, 5, "<");
+    stackview = subwin(stackbox, 6, 4, 1, 32);
+    #else
     stackbox = subwin(stdscr, 16, 6, 0, 31);
     box(stackbox,0,0);
     mvwaddstr(stackbox, 0, 1, "Stck");
     mvwaddstr(stackbox, 8, 0, ">");
     mvwaddstr(stackbox, 8, 5, "<");
     stackview = subwin(stackbox, 14, 4, 1, 32);
+    #endif
 
     ioregbox = subwin(stdscr, 8, 24, 0, 37);
     box(ioregbox,0,0);
@@ -176,12 +185,21 @@ void build_main_view(struct em8051 *aCPU)
     pswoutput = subwin(pswbox, 6, 16, 1, 63);
     scrollok(pswoutput, TRUE);
 
+    #ifdef __8052__
+    spregbox = subwin(stdscr, 8, 49, 8, 31);
+    box(spregbox,0,0);
+    mvwaddstr(spregbox, 0, 1, "TMOD/CON-TH0TL0-TH1TL1-SCON-PCON-T2MD/CN-TH2TL2");
+    mvwaddstr(spregbox, 6, 0, ">");
+    mvwaddstr(spregbox, 6, 48, "<");
+    spregoutput = subwin(spregbox, 6, 46, 9, 33);
+    #else
     spregbox = subwin(stdscr, 8, 43, 8, 37);
     box(spregbox,0,0);
     mvwaddstr(spregbox, 0, 2, "TMOD-TCON--TH0-TL0--TH1-TL1--SCON-PCON");
     mvwaddstr(spregbox, 6, 0, ">");
     mvwaddstr(spregbox, 6, 42, "<");
     spregoutput = subwin(spregbox, 6, 40, 9, 39);
+    #endif
     scrollok(spregoutput, TRUE);
 
     miscbox = subwin(stdscr, 7, 31, 9, 0);
@@ -576,6 +594,21 @@ void mainview_update(struct em8051 *aCPU)
                 history[hoffs + REG_IE]);
             wprintw(ioregoutput,"%s",temp);
 
+            #ifdef __8052__
+            sprintf(temp, "\n%02X %02X   %02X %02X  %02X %02X  %02X   %02X   %02X  %02X  %02X %02X",
+                history[hoffs + REG_TMOD],
+                history[hoffs + REG_TCON],
+                history[hoffs + REG_TH0],
+                history[hoffs + REG_TL0],
+                history[hoffs + REG_TH1],
+                history[hoffs + REG_TL1],
+                history[hoffs + REG_SCON],
+                history[hoffs + REG_PCON],
+                history[hoffs + REG_T2MOD],
+                history[hoffs + REG_T2CON],
+                history[hoffs + REG_TH2],
+                history[hoffs + REG_TL2]);
+            #else
             sprintf(temp, "\n%02X   %02X    %02X  %02X   %02X  %02X   %02X   %02X",
                 history[hoffs + REG_TMOD],
                 history[hoffs + REG_TCON],
@@ -585,6 +618,7 @@ void mainview_update(struct em8051 *aCPU)
                 history[hoffs + REG_TL1],
                 history[hoffs + REG_SCON],
                 history[hoffs + REG_PCON]);
+            #endif
             wprintw(spregoutput, "%s", temp);
 
             lastclock++;
@@ -663,6 +697,19 @@ void mainview_update(struct em8051 *aCPU)
                 (bytevalue >> 0) & 1);
     }
 
+    werase(stackview);
+    #ifdef __8052__
+    for (i = 0; i < 6; i++)
+    {
+        int offset = (i + aCPU->mSFR[REG_SP]-5);
+        if (offset < 0 || offset > 0xff)
+            wprintw(stackview," --\n");
+        else if (offset < 0x80)
+            wprintw(stackview," %02X\n", aCPU->mLowerData[offset]);
+        else
+            wprintw(stackview," %02X\n", aCPU->mUpperData[offset - 0x80]);
+    }
+    #else
     for (i = 0; i < 14; i++)
     {
 		int offset = (i + aCPU->mSFR[REG_SP]-7)&0xff;
@@ -671,13 +718,13 @@ void mainview_update(struct em8051 *aCPU)
 		else
 			wprintw(stackview," %02X\n", aCPU->mUpperData[offset - 0x80]);
     }
+    #endif
 
     if (speed != 0 || runmode == 0)
     {
         wrefresh(ramview);
         wrefresh(stackview);
     }
-    werase(stackview);
     wrefresh(miscview);
     if (speed != 0 || runmode == 0)
     {

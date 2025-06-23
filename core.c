@@ -52,6 +52,116 @@ static void serial_tx(struct em8051 *aCPU) {
 	}
 }
 
+#ifdef __8052__
+static bool timer2_add_increment(struct em8051 *aCPU, int8_t increment) {
+    int16_t v = aCPU->mSFR[REG_TL2];
+    v+=increment;
+    aCPU->mSFR[REG_TL2] = v & 0xff;
+    if (v > 0xff || v < 0)
+    {
+        // TL2 overflowed
+        v = aCPU->mSFR[REG_TH2];
+        v+=increment;
+        aCPU->mSFR[REG_TH2] = v & 0xff;
+        if (v > 0xff)
+        {
+            return true;
+        }
+    }
+
+    if (increment < 0 && aCPU->mSFR[REG_TL2] == aCPU->mSFR[REG_RCAP2L] && aCPU->mSFR[REG_TH2] == aCPU->mSFR[REG_RCAP2H])
+    {
+        return true;
+    }
+    return false;
+}
+
+static void timer2_tick(struct em8051 *aCPU){
+    static uint8_t prev_t2;
+    static uint8_t serial_tx_counter;
+    int8_t increment = 0;
+    bool overflow = false;
+
+    if (aCPU->mSFR[REG_T2CON] & T2CONMASK_TR2)
+    {
+        if (aCPU->mSFR[REG_T2CON] & T2CONMASK_CT2)
+        {
+            if (prev_t2 != 0 && (aCPU->mSFR[REG_P1] & (1)) == 0){
+                increment = 1;
+                if (aCPU->mSFR[REG_T2CON] & T2CONMASK_EXEN2)
+                    aCPU->mSFR[REG_T2CON] |= T2CONMASK_EXF2;
+            }
+            else
+                increment = 0;
+        }
+        else
+        {
+            if (aCPU->mSFR[REG_T2CON] & (T2CONMASK_TCLK | T2CONMASK_RCLK) ||
+                (aCPU->mSFR[REG_T2MOD] & T2MODMASK_T2OE && !(aCPU->mSFR[REG_T2CON] & T2CONMASK_CT2)))
+                // TODO: Due to the lack of accurate emulation of internal CPU states, there is a limitation that if the targeted overflow
+                // rate is higher than the machine cycle (RCAP2H/L >= 65533), the effective overflow rate will be less than the machine
+                // cycle frequency. This can be worked around for baudrates below, but the clock out wont be right without doing some
+                // re-work in the emu.c code that calls the tick function. A simple solution might be add a per clock tick, or change the
+                // existing tick functions to accept a number that indicates how far through the machine cycle it is (0-11 === clock%12),
+                // then call them every clock so that they can decide if they need to do anything themselves.
+                increment = 6;
+            else
+                increment = 1;
+        }
+    }
+
+    if (increment && aCPU->mSFR[REG_T2MOD] & T2MODMASK_DCEN && !(aCPU->mSFR[REG_P1] & (1 << 1))) {
+        increment = -increment;
+    }
+
+    if (increment) {
+        overflow = timer2_add_increment(aCPU, increment);
+    }
+
+    if (overflow) {
+        serial_tx_counter = (serial_tx_counter + 1) % 16;
+
+        aCPU->mSFR[REG_T2CON] |= T2CONMASK_TF2;
+        // Clockout
+        if (aCPU->mSFR[REG_T2MOD] & T2MODMASK_T2OE && !(aCPU->mSFR[REG_T2CON] & T2CONMASK_CT2)) {
+            if (aCPU->mSFR[REG_T2CON] & (T2CONMASK_TCLK | T2CONMASK_RCLK)) {
+                if (serial_tx_counter == 0)
+                    aCPU->mSFR[REG_P1] ^= (1);
+            } else
+                aCPU->mSFR[REG_P1] ^= (1);
+        }
+        // Baud generator
+        if (aCPU->mSFR[REG_T2CON] & (T2CONMASK_TCLK | T2CONMASK_RCLK)) {
+            aCPU->mSFR[REG_T2CON] &= ~T2CONMASK_TF2;
+            if (increment > 0) {
+                aCPU->mSFR[REG_TL2] = aCPU->mSFR[REG_RCAP2L];
+                aCPU->mSFR[REG_TH2] = aCPU->mSFR[REG_RCAP2H];
+            } else {
+                aCPU->mSFR[REG_TL2] = 0xff;
+                aCPU->mSFR[REG_TH2] = 0xff;
+            }
+            if (aCPU->mSFR[REG_T2CON] & (T2CONMASK_TCLK)) {
+                if (aCPU->mSFR[REG_SCON] & SCONMASK_SM1) {
+                    if (serial_tx_counter == 0){
+                        serial_tx(aCPU);
+                    }
+                }
+            }
+        // Auto-reload
+        } else if (aCPU->mSFR[REG_T2CON] & T2CONMASK_CPRL2) {
+            if (increment > 0) {
+                aCPU->mSFR[REG_TL2] = aCPU->mSFR[REG_RCAP2L];
+                aCPU->mSFR[REG_TH2] = aCPU->mSFR[REG_RCAP2H];
+            } else {
+                aCPU->mSFR[REG_TL2] = 0xff;
+                aCPU->mSFR[REG_TH2] = 0xff;
+            }
+        }
+    }
+
+    prev_t2 = aCPU->mSFR[REG_P1] & 1;
+}
+#endif
 
 static void timer_tick(struct em8051 *aCPU)
 {
@@ -297,11 +407,17 @@ static void timer_tick(struct em8051 *aCPU)
                 break;
             }
 
-	    // If Timer1 overflowed, see if we need to send a serial bit
+            // If Timer1 overflowed, see if we need to send a serial bit
             if (aCPU->mSFR[REG_TCON] & TCONMASK_TF1) {
                 if (aCPU->mSFR[REG_SCON] & SCONMASK_SM1) {
-                    serial_tx(aCPU);
-		    aCPU->mSFR[REG_TCON] &= ~TCONMASK_TF1; // clear overflow flag
+                    #ifdef __8052__
+                    if (!(aCPU->mSFR[REG_T2CON] & T2CONMASK_TCLK)) {
+                    #endif
+                        serial_tx(aCPU);
+                        aCPU->mSFR[REG_TCON] &= ~TCONMASK_TF1; // clear overflow flag
+                    #ifdef __8052__
+                    }
+                    #endif
                 }
             }
         }
@@ -390,18 +506,21 @@ void handle_interrupts(struct em8051 *aCPU)
             // TODO
         }
 #ifdef __8052__
-        if (aCPU->mSFR[REG_IE] & IEMASK_ET2 && !hi)
+        if (aCPU->mSFR[REG_IE] & IEMASK_ET2 &&
+            (aCPU->mSFR[REG_T2CON] & T2CONMASK_TF2 ||
+                (aCPU->mSFR[REG_T2CON] & T2CONMASK_EXF2 && !aCPU->mSFR[REG_T2MOD] & T2MODMASK_DCEN)
+            ) && !hi)
         {
             // Timer 2 (8052 only)
             if (!lo)
             {
-                dest_ip = ISR_SR;
+                dest_ip = ISR_TF2;
                 lo = 1;
             }
             if (aCPU->mSFR[REG_IP] & IPMASK_PT2)
             {
                 hi = 1;
-                dest_ip = ISR_SR;
+                dest_ip = ISR_TF2;
             }
             // TODO
         }
@@ -494,6 +613,9 @@ bool tick(struct em8051 *aCPU)
     }
 
     timer_tick(aCPU);
+    #ifdef __8052__
+    timer2_tick(aCPU);
+    #endif
 
     return ticked;
 }

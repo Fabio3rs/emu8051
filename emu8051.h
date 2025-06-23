@@ -140,7 +140,15 @@ enum SFR_REGS
     REG_TL1 = 0x8B - 0x80,
     REG_SCON = 0x98 - 0x80,
     REG_SBUF = 0x99 - 0x80,
-    REG_PCON = 0x87 - 0x80
+    REG_PCON = 0x87 - 0x80,
+#ifdef __8052__
+    REG_T2CON = 0xC8 - 0x80,
+    REG_T2MOD = 0xC9 - 0x80,
+    REG_TH2 = 0xCD - 0x80,
+    REG_TL2 = 0xCC - 0x80,
+    REG_RCAP2H = 0xCB - 0x80,
+    REG_RCAP2L = 0xCA - 0x80,
+#endif // __8052__
 };
 
 enum PSW_BITS
@@ -214,6 +222,26 @@ enum TMOD_MASKS
     TMODMASK_CT_1 = 0x40,
     TMODMASK_GATE_1 = 0x80
 };
+
+#ifdef __8052__
+enum T2CON_MASKS
+{
+    T2CONMASK_CPRL2 = 0x01,
+    T2CONMASK_CT2   = 0x02,
+    T2CONMASK_TR2   = 0x04,
+    T2CONMASK_EXEN2 = 0x08,
+    T2CONMASK_TCLK  = 0x10,
+    T2CONMASK_RCLK  = 0x20,
+    T2CONMASK_EXF2  = 0x40,
+    T2CONMASK_TF2   = 0x80
+};
+
+enum T2MOD_MASKS
+{
+    T2MODMASK_DCEN = 0x01,
+    T2MODMASK_T2OE = 0x02
+};
+#endif
 
 enum IP_MASKS
 {
