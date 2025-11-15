@@ -3,6 +3,8 @@
 #####################################################################
 BIN := emu
 
+DEFS += -D__8052__
+
 CFLAGS += -O2
 CFLAGS += -pipe
 CFLAGS += -g -Wall -Wextra -Wno-unused-parameter -Wshadow
@@ -28,7 +30,14 @@ $(BIN): $(OBJ)
 
 clean:
 	-rm -f $(BIN) $(OBJ)
+	-rm -rf out
 
 .PHONY: clean all
 
 all: $(BIN)
+
+lib: $(OBJ)
+	mkdir -p out/lib
+	mkdir -p out/include
+	ar rcs out/lib/libemu8051.a *.o
+	unifdef $(DEFS) -x 2 -o out/include/emu8051.h emu8051.h

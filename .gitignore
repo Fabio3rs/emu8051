@@ -15,6 +15,9 @@
 #binary file
 emu
 
+#output directory
+out/*
+
 #editor temp files
 \#*
 .\#*

@@ -168,7 +168,8 @@ static void timer_tick(struct em8051 *aCPU)
     uint8_t increment;
     uint16_t v;
 
-    // TODO: External int 0 flag
+    static uint8_t prev_t0;
+    static uint8_t prev_t1;
 
     if ((aCPU->mSFR[REG_TMOD] & (TMODMASK_M0_0 | TMODMASK_M1_0)) == (TMODMASK_M0_0 | TMODMASK_M1_0))
     {
@@ -177,16 +178,17 @@ static void timer_tick(struct em8051 *aCPU)
         increment = 0;
         
         // Check if we're run enabled
-        // TODO: also run if GATE is one and INT is one (external interrupt)
-        if (!(aCPU->mSFR[REG_TMOD] & TMODMASK_GATE_0) && 
-            (aCPU->mSFR[REG_TCON] & TCONMASK_TR0))
+        if (aCPU->mSFR[REG_TCON] & TCONMASK_TR0 &&
+            (!(aCPU->mSFR[REG_TMOD] & TMODMASK_GATE_0) ||
+            (aCPU->mSFR[REG_TMOD] & TMODMASK_GATE_0 && aCPU->mSFR[REG_P3] & P3MASK_T0)))
         {
             // check timer / counter mode
             if (aCPU->mSFR[REG_TMOD] & TMODMASK_CT_0)
             {
-                // counter op;
-                // counter works if T0 pin was 1 and is now 0 (P3.4 on AT89C2051)
-                increment = 0; // TODO
+                if (prev_t0 != 0 && (aCPU->mSFR[REG_P3] & P3MASK_T0) == 0)
+                    increment = 1;
+                else
+                    increment = 0;
             }
             else
             {
@@ -208,16 +210,17 @@ static void timer_tick(struct em8051 *aCPU)
         increment = 0;
         
         // Check if we're run enabled
-        // TODO: also run if GATE is one and INT is one (external interrupt)
-        if (!(aCPU->mSFR[REG_TMOD] & TMODMASK_GATE_1) && 
-            (aCPU->mSFR[REG_TCON] & TCONMASK_TR1))
+        if (aCPU->mSFR[REG_TCON] & TCONMASK_TR1 &&
+            (!(aCPU->mSFR[REG_TMOD] & TMODMASK_GATE_1) ||
+            (aCPU->mSFR[REG_TMOD] & TMODMASK_GATE_1 && aCPU->mSFR[REG_P3] & P3MASK_T1)))
         {
             // check timer / counter mode
             if (aCPU->mSFR[REG_TMOD] & TMODMASK_CT_1)
             {
-                // counter op;
-                // counter works if T1 pin was 1 and is now 0
-                increment = 0; // TODO
+                if (prev_t1 != 0 && (aCPU->mSFR[REG_P3] & P3MASK_T1) == 0)
+                    increment = 1;
+                else
+                    increment = 0;
             }
             else
             {
@@ -244,16 +247,17 @@ static void timer_tick(struct em8051 *aCPU)
         increment = 0;
         
         // Check if we're run enabled
-        // TODO: also run if GATE is one and INT is one (external interrupt)
-        if (!(aCPU->mSFR[REG_TMOD] & TMODMASK_GATE_0) && 
-            (aCPU->mSFR[REG_TCON] & TCONMASK_TR0))
+        if (aCPU->mSFR[REG_TCON] & TCONMASK_TR0 &&
+            (!(aCPU->mSFR[REG_TMOD] & TMODMASK_GATE_0) ||
+            (aCPU->mSFR[REG_TMOD] & TMODMASK_GATE_0 && aCPU->mSFR[REG_P3] & P3MASK_T0)))
         {
             // check timer / counter mode
             if (aCPU->mSFR[REG_TMOD] & TMODMASK_CT_0)
             {
-                // counter op;
-                // counter works if T0 pin was 1 and is now 0 (P3.4 on AT89C2051)
-                increment = 0; // TODO
+                if (prev_t0 != 0 && (aCPU->mSFR[REG_P3] & P3MASK_T0) == 0)
+                    increment = 1;
+                else
+                    increment = 0;
             }
             else
             {
@@ -311,26 +315,26 @@ static void timer_tick(struct em8051 *aCPU)
                 }
                 break;
             default: // two 8-bit timers
-                // TODO
+                // mode 3 handled above
                 break;
             }
         }
     }
 
-    // TODO: External int 1 
-
     {   // Timer/counter 1 
         
         increment = 0;
 
-        if (!(aCPU->mSFR[REG_TMOD] & TMODMASK_GATE_1) && 
-            (aCPU->mSFR[REG_TCON] & TCONMASK_TR1))
+        if (aCPU->mSFR[REG_TCON] & TCONMASK_TR1 &&
+            (!(aCPU->mSFR[REG_TMOD] & TMODMASK_GATE_1) ||
+            (aCPU->mSFR[REG_TMOD] & TMODMASK_GATE_1 && aCPU->mSFR[REG_P3] & P3MASK_T1)))
         {
             if (aCPU->mSFR[REG_TMOD] & TMODMASK_CT_1)
             {
-                // counter op;
-                // counter works if T1 pin was 1 and is now 0
-                increment = 0; // TODO
+                if (prev_t1 != 0 && (aCPU->mSFR[REG_P3] & P3MASK_T1) == 0)
+                    increment = 1;
+                else
+                    increment = 0;
             }
             else
             {
@@ -419,7 +423,8 @@ static void timer_tick(struct em8051 *aCPU)
         }
     }
 
-    // TODO: serial port, timer2, other stuff
+    prev_t0 = aCPU->mSFR[REG_P3] & P3MASK_T0;
+    prev_t1 = aCPU->mSFR[REG_P3] & P3MASK_T1;
 }
 
 void handle_interrupts(struct em8051 *aCPU)
