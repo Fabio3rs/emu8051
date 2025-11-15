@@ -440,8 +440,8 @@ static uint8_t reti(struct em8051 *aCPU)
             if (aCPU->int_a[hi] != aCPU->mSFR[REG_ACC])
                 aCPU->except(aCPU, EXCEPTION_IRET_ACC_MISMATCH);
             if (aCPU->int_sp[hi] != aCPU->mSFR[REG_SP])
-                aCPU->except(aCPU, EXCEPTION_IRET_SP_MISMATCH);    
-            if ((aCPU->int_psw[hi] & (PSWMASK_OV | PSWMASK_RS0 | PSWMASK_RS1 | PSWMASK_AC | PSWMASK_C)) !=                 
+                aCPU->except(aCPU, EXCEPTION_IRET_SP_MISMATCH);
+            if ((aCPU->int_psw[hi] & (PSWMASK_OV | PSWMASK_RS0 | PSWMASK_RS1 | PSWMASK_AC | PSWMASK_C)) !=
                 (aCPU->mSFR[REG_PSW] & (PSWMASK_OV | PSWMASK_RS0 | PSWMASK_RS1 | PSWMASK_AC | PSWMASK_C)))
                 aCPU->except(aCPU, EXCEPTION_IRET_PSW_MISMATCH);
         }
@@ -844,8 +844,9 @@ static uint8_t mov_mem_indir_rx(struct em8051 *aCPU)
 {
     uint8_t address_from = OPERAND1;
     uint8_t address_to = INDIR_RX_ADDRESS;
-    uint8_t value = read_mem_indir(aCPU, address_from);
-    write_mem(aCPU, address_to, value);
+    // FIX: Use read_mem() for direct source, write_mem_indir() for indirect dest
+    uint8_t value = read_mem(aCPU, address_from);
+    write_mem_indir(aCPU, address_to, value);
     PC += 2;
     return 1;
 }
