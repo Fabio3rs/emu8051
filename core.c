@@ -554,6 +554,14 @@ void handle_interrupts(struct em8051 *aCPU)
     case ISR_SR:
         aCPU->serial_interrupt_trigger = 0; // handled the serial interrupt trigger
         break;
+#ifdef __8052__
+    case ISR_TF2:
+        // Clear Timer 2 overflow flag (TF2) - bit 7 of T2CON
+        // CRITICAL: Without this, Timer 2 fires continuously causing stack overflow!
+        // Note: EXF2 (bit 6) is NOT automatically cleared, must be cleared by software
+        aCPU->mSFR[REG_T2CON] &= ~T2CONMASK_TF2;
+        break;
+#endif // __8052__
     }
 
     if (hi)
