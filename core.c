@@ -1,24 +1,24 @@
 /* 8051 emulator core
  * Copyright 2006 Jari Komppa
  *
- * Permission is hereby granted, free of charge, to any person obtaining 
- * a copy of this software and associated documentation files (the 
- * "Software"), to deal in the Software without restriction, including 
- * without limitation the rights to use, copy, modify, merge, publish, 
- * distribute, sublicense, and/or sell copies of the Software, and to 
- * permit persons to whom the Software is furnished to do so, subject 
- * to the following conditions: 
+ * Permission is hereby granted, free of charge, to any person obtaining
+ * a copy of this software and associated documentation files (the
+ * "Software"), to deal in the Software without restriction, including
+ * without limitation the rights to use, copy, modify, merge, publish,
+ * distribute, sublicense, and/or sell copies of the Software, and to
+ * permit persons to whom the Software is furnished to do so, subject
+ * to the following conditions:
  *
- * The above copyright notice and this permission notice shall be included 
- * in all copies or substantial portions of the Software. 
+ * The above copyright notice and this permission notice shall be included
+ * in all copies or substantial portions of the Software.
  *
- * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS 
- * OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, 
- * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE 
- * AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER 
- * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING 
- * FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS 
- * IN THE SOFTWARE. 
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
+ * OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+ * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+ * AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+ * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
+ * FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS
+ * IN THE SOFTWARE.
  *
  * (i.e. the MIT License)
  *
@@ -176,7 +176,7 @@ static void timer_tick(struct em8051 *aCPU)
         // timer/counter 0 in mode 3
 
         increment = 0;
-        
+
         // Check if we're run enabled
         if (aCPU->mSFR[REG_TCON] & TCONMASK_TR0 &&
             (!(aCPU->mSFR[REG_TMOD] & TMODMASK_GATE_0) ||
@@ -208,7 +208,7 @@ static void timer_tick(struct em8051 *aCPU)
         }
 
         increment = 0;
-        
+
         // Check if we're run enabled
         if (aCPU->mSFR[REG_TCON] & TCONMASK_TR1 &&
             (!(aCPU->mSFR[REG_TMOD] & TMODMASK_GATE_1) ||
@@ -243,9 +243,9 @@ static void timer_tick(struct em8051 *aCPU)
     }
 
     {   // Timer/counter 0
-        
+
         increment = 0;
-        
+
         // Check if we're run enabled
         if (aCPU->mSFR[REG_TCON] & TCONMASK_TR0 &&
             (!(aCPU->mSFR[REG_TMOD] & TMODMASK_GATE_0) ||
@@ -264,7 +264,7 @@ static void timer_tick(struct em8051 *aCPU)
                 increment = 1;
             }
         }
-        
+
         if (increment)
         {
             switch (aCPU->mSFR[REG_TMOD] & (TMODMASK_M0_0 | TMODMASK_M1_0))
@@ -321,8 +321,8 @@ static void timer_tick(struct em8051 *aCPU)
         }
     }
 
-    {   // Timer/counter 1 
-        
+    {   // Timer/counter 1
+
         increment = 0;
 
         if (aCPU->mSFR[REG_TCON] & TCONMASK_TR1 &&
@@ -363,7 +363,7 @@ static void timer_tick(struct em8051 *aCPU)
                     if (!((aCPU->mSFR[REG_TMOD] & T0_MODE3_MASK ) == T0_MODE3_MASK))
                         aCPU->mSFR[REG_TCON] |= TCONMASK_TF1;
 
-                    } 
+                    }
                 }
                 break;
             case TMODMASK_M0_1: // 16-bit timer/counter
@@ -380,7 +380,7 @@ static void timer_tick(struct em8051 *aCPU)
                     {
                         // TH1 overflowed; set bit
                         // Only update TF1 if timer 0 is not in "mode 3"
-              
+
                         if (!((aCPU->mSFR[REG_TMOD] & T0_MODE3_MASK)  == T0_MODE3_MASK))
                             aCPU->mSFR[REG_TCON] |= TCONMASK_TF1;
 
@@ -396,11 +396,11 @@ static void timer_tick(struct em8051 *aCPU)
                     // TL0 overflowed; reload
                     aCPU->mSFR[REG_TL1] = aCPU->mSFR[REG_TH1];
                     // Only update TF1 if timer 0 is not in "mode 3"
-                    
-            
+
+
                     if (!((aCPU->mSFR[REG_TMOD] & T0_MODE3_MASK ) == T0_MODE3_MASK))
                         aCPU->mSFR[REG_TCON] |= TCONMASK_TF1;
-                    
+
                 }
                 break;
             default: // disabled
@@ -427,6 +427,16 @@ static void timer_tick(struct em8051 *aCPU)
     prev_t1 = aCPU->mSFR[REG_P3] & P3MASK_T1;
 }
 
+#ifdef __SAB80C517__
+// SAB80C517: SFR write callback for interrupt enable/priority registers
+// Sets 1-instruction delay before interrupts can be recognized (per datasheet)
+static void sfr_write_irq_inhibit(struct em8051 *aCPU, uint8_t aRegister)
+{
+    (void)aRegister;  // Unused parameter
+    aCPU->irq_inhibit = 1;  // Set 1-instruction delay
+}
+#endif // __SAB80C517__
+
 void handle_interrupts(struct em8051 *aCPU)
 {
     int16_t dest_ip = -1;
@@ -434,15 +444,15 @@ void handle_interrupts(struct em8051 *aCPU)
     uint8_t lo = 0;
 
     // can't interrupt high level
-    if (aCPU->mInterruptActive > 1) 
-        return;    
+    if (aCPU->mInterruptActive > 1)
+        return;
 
     if (aCPU->mSFR[REG_IE] & IEMASK_EA)
     {
         // Interrupts enabled
         if (aCPU->mSFR[REG_IE] & IEMASK_EX0 && aCPU->mSFR[REG_TCON] & TCONMASK_IE0)
         {
-            // External int 0 
+            // External int 0
             dest_ip = ISR_INT0;
             if (aCPU->mSFR[REG_IP] & IPMASK_PX0)
                 hi = 1;
@@ -450,7 +460,7 @@ void handle_interrupts(struct em8051 *aCPU)
         }
         if (aCPU->mSFR[REG_IE] & IEMASK_ET0 && aCPU->mSFR[REG_TCON] & TCONMASK_TF0 && !hi)
         {
-            // Timer/counter 0 
+            // Timer/counter 0
             if (!lo)
             {
                 dest_ip = ISR_TF0;
@@ -464,7 +474,7 @@ void handle_interrupts(struct em8051 *aCPU)
         }
         if (aCPU->mSFR[REG_IE] & IEMASK_EX1 && aCPU->mSFR[REG_TCON] & TCONMASK_IE1 && !hi)
         {
-            // External int 1 
+            // External int 1
             if (!lo)
             {
                 dest_ip = ISR_INT1;
@@ -492,7 +502,7 @@ void handle_interrupts(struct em8051 *aCPU)
         }
         if (aCPU->mSFR[REG_IE] & IEMASK_ES && aCPU->serial_interrupt_trigger && !hi)
         {
-            // Serial port interrupt 
+            // Serial port interrupt
             if (!lo)
             {
                 dest_ip = ISR_SR;
@@ -526,14 +536,14 @@ void handle_interrupts(struct em8051 *aCPU)
         }
 #endif // __8052__
     }
-    
+
     // no interrupt
     if (dest_ip == -1)
         return;
 
     // can't interrupt same-level
     if (aCPU->mInterruptActive == 1 && !hi)
-        return; 
+        return;
 
     // some interrupt occurs; perform LCALL
     aCPU->mSFR[REG_PCON] &= ~0x01; // clear idle flag, but not Power down flag
@@ -577,6 +587,218 @@ void handle_interrupts(struct em8051 *aCPU)
     aCPU->int_sp[hi] = aCPU->mSFR[REG_SP];
 }
 
+#ifdef __SAB80C517__
+// SAB80C517: Handle interrupts with 4-level priority system and 14 sources
+// Datasheet: Table 8-1 defines priority groups and polling order
+// OPTIMIZED: Cache SFR reads and pre-calculate priorities to reduce overhead
+void handle_interrupts_80c517(struct em8051 *aCPU)
+{
+    int16_t dest_ip = -1;
+    uint8_t highest_priority = 0;
+    uint8_t current_level = aCPU->mInterruptActive;
+
+    // Check if no interrupt is currently active (sentinel value)
+    // This allows priority-0 interrupts to be accepted
+    bool no_int_active = (current_level == SAB80C517_NO_INT_ACTIVE);
+
+    // =========================================================================
+    // OPTIMIZATION: Cache all SFR reads at start (reduces ~60 reads to ~10)
+    // =========================================================================
+    uint8_t ien0  = aCPU->mSFR[REG_IEN0];
+    uint8_t ien1  = aCPU->mSFR[REG_IEN1];
+    uint8_t ien2  = aCPU->mSFR[REG_IEN2];
+    uint8_t tcon  = aCPU->mSFR[REG_TCON];
+    uint8_t ircon = aCPU->mSFR[REG_IRCON];
+    uint8_t ip0   = aCPU->mSFR[REG_IP0];
+    uint8_t ip1   = aCPU->mSFR[REG_IP1];
+
+    // Global interrupt enable check (early exit)
+    if (!(ien0 & IEN0MASK_EA))
+        return;
+
+    // Pre-calculate all 6 group priorities (2 SFR reads instead of 30)
+    // Priority encoding: level = (IP1.bit << 1) | IP0.bit
+    uint8_t group_pri[6];
+    for (int g = 0; g < 6; g++)
+        group_pri[g] = (uint8_t)(((ip1 >> g) & 1) << 1) | ((ip0 >> g) & 1);
+
+    // =========================================================================
+    // Scan all 14 interrupt sources in datasheet polling order
+    // Accept if: no interrupt is active OR priority is strictly greater than current
+    // Within same priority level: first in polling order wins
+    // =========================================================================
+
+    // Group 0 (IP0.0/IP1.0): IE0, SR1, IADC
+    if ((ien0 & IEN0MASK_EX0) && (tcon & TCONMASK_IE0)) {
+        uint8_t pri = group_pri[0];
+        if ((no_int_active || pri > current_level) && (dest_ip < 0 || pri > highest_priority)) {
+            highest_priority = pri;
+            dest_ip = ISR_517_INT0;
+        }
+    }
+    if ((ien1 & IEN1MASK_ES1) && (aCPU->mSFR[REG_S1CON] & (SCONMASK_RI | SCONMASK_TI))) {
+        uint8_t pri = group_pri[0];
+        if ((no_int_active || pri > current_level) && pri > highest_priority) {
+            highest_priority = pri;
+            dest_ip = ISR_517_SR1;
+        }
+    }
+    if ((ien2 & IEN2MASK_IADC) && (ircon & IRCONMASK_IADC)) {
+        uint8_t pri = group_pri[0];
+        if ((no_int_active || pri > current_level) && pri > highest_priority) {
+            highest_priority = pri;
+            dest_ip = ISR_517_IADC;
+        }
+    }
+
+    // Group 1 (IP0.1/IP1.1): TF0, IEX2
+    if ((ien0 & IEN0MASK_ET0) && (tcon & TCONMASK_TF0)) {
+        uint8_t pri = group_pri[1];
+        if ((no_int_active || pri > current_level) && (dest_ip < 0 || pri > highest_priority)) {
+            highest_priority = pri;
+            dest_ip = ISR_517_TF0;
+        }
+    }
+    if ((ien1 & IEN1MASK_EX2) && (ircon & IRCONMASK_IEX2)) {
+        uint8_t pri = group_pri[1];
+        if ((no_int_active || pri > current_level) && pri > highest_priority) {
+            highest_priority = pri;
+            dest_ip = ISR_517_IEX2;
+        }
+    }
+
+    // Group 2 (IP0.2/IP1.2): IE1, IEX3
+    if ((ien0 & IEN0MASK_EX1) && (tcon & TCONMASK_IE1)) {
+        uint8_t pri = group_pri[2];
+        if ((no_int_active || pri > current_level) && (dest_ip < 0 || pri > highest_priority)) {
+            highest_priority = pri;
+            dest_ip = ISR_517_INT1;
+        }
+    }
+    if ((ien1 & IEN1MASK_EX3) && (ircon & IRCONMASK_IEX3)) {
+        uint8_t pri = group_pri[2];
+        if ((no_int_active || pri > current_level) && pri > highest_priority) {
+            highest_priority = pri;
+            dest_ip = ISR_517_IEX3;
+        }
+    }
+
+    // Group 3 (IP0.3/IP1.3): TF1, CTF, IEX4
+    if ((ien0 & IEN0MASK_ET1) && (tcon & TCONMASK_TF1)) {
+        uint8_t pri = group_pri[3];
+        if ((no_int_active || pri > current_level) && (dest_ip < 0 || pri > highest_priority)) {
+            highest_priority = pri;
+            dest_ip = ISR_517_TF1;
+        }
+    }
+    if ((ien2 & IEN2MASK_ECT) && (aCPU->mSFR[REG_CTCON] & CTCONMASK_CTF)) {
+        uint8_t pri = group_pri[3];
+        if ((no_int_active || pri > current_level) && pri > highest_priority) {
+            highest_priority = pri;
+            dest_ip = ISR_517_CTF;
+        }
+    }
+    if ((ien1 & IEN1MASK_EX4) && (ircon & IRCONMASK_IEX4)) {
+        uint8_t pri = group_pri[3];
+        if ((no_int_active || pri > current_level) && pri > highest_priority) {
+            highest_priority = pri;
+            dest_ip = ISR_517_IEX4;
+        }
+    }
+
+    // Group 4 (IP0.4/IP1.4): SR0, IEX5
+    if ((ien0 & IEN0MASK_ES0) && aCPU->serial_interrupt_trigger) {
+        uint8_t pri = group_pri[4];
+        if ((no_int_active || pri > current_level) && (dest_ip < 0 || pri > highest_priority)) {
+            highest_priority = pri;
+            dest_ip = ISR_517_SR0;
+        }
+    }
+    if ((ien1 & IEN1MASK_EX5) && (ircon & IRCONMASK_IEX5)) {
+        uint8_t pri = group_pri[4];
+        if ((no_int_active || pri > current_level) && pri > highest_priority) {
+            highest_priority = pri;
+            dest_ip = ISR_517_IEX5;
+        }
+    }
+
+    // Group 5 (IP0.5/IP1.5): TF2/EXF2, IEX6
+    if ((ien0 & IEN0MASK_ET2) &&
+        ((ircon & IRCONMASK_TF2) || ((ircon & IRCONMASK_EXF2) && (ien1 & IEN1MASK_EXF2)))) {
+        uint8_t pri = group_pri[5];
+        if ((no_int_active || pri > current_level) && (dest_ip < 0 || pri > highest_priority)) {
+            highest_priority = pri;
+            dest_ip = ISR_517_TF2;
+        }
+    }
+    if ((ien1 & IEN1MASK_EX6) && (ircon & IRCONMASK_IEX6)) {
+        uint8_t pri = group_pri[5];
+        if ((no_int_active || pri > current_level) && pri > highest_priority) {
+            highest_priority = pri;
+            dest_ip = ISR_517_IEX6;
+        }
+    }
+
+    // No interrupt found
+    if (dest_ip < 0)
+        return;
+
+    // Perform LCALL to ISR
+    aCPU->mSFR[REG_PCON] &= ~0x01;  // Clear idle flag
+    push_to_stack(aCPU, aCPU->mPC & 0xff);
+    push_to_stack(aCPU, aCPU->mPC >> 8);
+    aCPU->mPC = dest_ip;
+    aCPU->mTickDelay = 2;
+
+    // Clear interrupt flags (hardware auto-clear policy per datasheet)
+    switch (dest_ip) {
+        case ISR_517_TF0:
+            aCPU->mSFR[REG_TCON] &= ~TCONMASK_TF0;
+            break;
+        case ISR_517_TF1:
+            aCPU->mSFR[REG_TCON] &= ~TCONMASK_TF1;
+            break;
+        case ISR_517_IEX2:
+            aCPU->mSFR[REG_IRCON] &= ~IRCONMASK_IEX2;
+            break;
+        case ISR_517_IEX3:
+            aCPU->mSFR[REG_IRCON] &= ~IRCONMASK_IEX3;
+            break;
+        case ISR_517_IEX4:
+            aCPU->mSFR[REG_IRCON] &= ~IRCONMASK_IEX4;
+            break;
+        case ISR_517_IEX5:
+            aCPU->mSFR[REG_IRCON] &= ~IRCONMASK_IEX5;
+            break;
+        case ISR_517_IEX6:
+            aCPU->mSFR[REG_IRCON] &= ~IRCONMASK_IEX6;
+            break;
+        case ISR_517_INT0:
+            // Clear IE0 only if edge-triggered (IT0=1)
+            if (aCPU->mSFR[REG_TCON] & TCONMASK_IT0)
+                aCPU->mSFR[REG_TCON] &= ~TCONMASK_IE0;
+            break;
+        case ISR_517_INT1:
+            // Clear IE1 only if edge-triggered (IT1=1)
+            if (aCPU->mSFR[REG_TCON] & TCONMASK_IT1)
+                aCPU->mSFR[REG_TCON] &= ~TCONMASK_IE1;
+            break;
+        case ISR_517_SR0:
+            aCPU->serial_interrupt_trigger = 0;
+            break;
+        // TF2, EXF2, IADC, RI1/TI1, CTF: Software must clear (no action)
+    }
+
+    // Save registers for this priority level
+    aCPU->int_a_517[highest_priority] = aCPU->mSFR[REG_ACC];
+    aCPU->int_psw_517[highest_priority] = aCPU->mSFR[REG_PSW];
+    aCPU->int_sp_517[highest_priority] = aCPU->mSFR[REG_SP];
+
+    // Update active priority level
+    aCPU->mInterruptActive = highest_priority;
+}
+#endif // __SAB80C517__
+
 bool tick(struct em8051 *aCPU)
 {
     uint8_t v;
@@ -596,10 +818,20 @@ bool tick(struct em8051 *aCPU)
     // Interrupts are sent if the following cases are not true:
     // 1. interrupt of equal or higher priority is in progress (tested inside function)
     // 2. current cycle is not the final cycle of instruction (tickdelay = 0)
-    // 3. the instruction in progress is RETI or any write to the IE or IP regs (TODO)
+    // 3. the instruction in progress is RETI or any write to the IE or IP regs
     if (aCPU->mTickDelay == 0)
     {
+#ifdef __SAB80C517__
+        // Decrement IRQ inhibit counter
+        if (aCPU->irq_inhibit > 0)
+            aCPU->irq_inhibit--;
+
+        // Only handle interrupts if not inhibited
+        if (aCPU->irq_inhibit == 0)
+            handle_interrupts_80c517(aCPU);
+#else
         handle_interrupts(aCPU);
+#endif
     }
 
     if (aCPU->mTickDelay == 0)
@@ -648,13 +880,13 @@ void op_setptrs(struct em8051 *aCPU);
 
 void reset(struct em8051 *aCPU, bool aWipe)
 {
-    // clear memory, set registers to bootup values, etc    
+    // clear memory, set registers to bootup values, etc
     if (aWipe)
     {
         memset(aCPU->mCodeMem, 0, aCPU->mCodeMemMaxIdx+1);
         memset(aCPU->mExtData, 0, aCPU->mExtDataMaxIdx+1);
         memset(aCPU->mLowerData, 0, 128);
-        if (aCPU->mUpperData) 
+        if (aCPU->mUpperData)
             memset(aCPU->mUpperData, 0, 128);
     }
 
@@ -684,7 +916,24 @@ void reset(struct em8051 *aCPU, bool aWipe)
     op_setptrs(aCPU);
 
     // Clean internal variables
+#ifdef __SAB80C517__
+    aCPU->mInterruptActive = SAB80C517_NO_INT_ACTIVE;  // No interrupt active
+    // Initialize SAB80C517 interrupt state
+    aCPU->irq_inhibit = 0;
+#else
     aCPU->mInterruptActive = 0;
+#endif
+
+#ifdef __SAB80C517__
+
+    // Register SFR write callbacks for IRQ inhibit
+    // These registers trigger 1-instruction delay before interrupt recognition
+    aCPU->sfrwrite[REG_IEN0 - 0x80] = sfr_write_irq_inhibit;
+    aCPU->sfrwrite[REG_IEN1 - 0x80] = sfr_write_irq_inhibit;
+    aCPU->sfrwrite[REG_IEN2 - 0x80] = sfr_write_irq_inhibit;
+    aCPU->sfrwrite[REG_IP0 - 0x80]  = sfr_write_irq_inhibit;
+    aCPU->sfrwrite[REG_IP1 - 0x80]  = sfr_write_irq_inhibit;
+#endif
 
     // Clean Serial
     aCPU->serial_interrupt_trigger = 0;

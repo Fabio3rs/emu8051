@@ -1,24 +1,24 @@
 /* 8051 emulator core
  * Copyright 2006 Jari Komppa
  *
- * Permission is hereby granted, free of charge, to any person obtaining 
- * a copy of this software and associated documentation files (the 
- * "Software"), to deal in the Software without restriction, including 
- * without limitation the rights to use, copy, modify, merge, publish, 
- * distribute, sublicense, and/or sell copies of the Software, and to 
- * permit persons to whom the Software is furnished to do so, subject 
- * to the following conditions: 
+ * Permission is hereby granted, free of charge, to any person obtaining
+ * a copy of this software and associated documentation files (the
+ * "Software"), to deal in the Software without restriction, including
+ * without limitation the rights to use, copy, modify, merge, publish,
+ * distribute, sublicense, and/or sell copies of the Software, and to
+ * permit persons to whom the Software is furnished to do so, subject
+ * to the following conditions:
  *
- * The above copyright notice and this permission notice shall be included 
- * in all copies or substantial portions of the Software. 
+ * The above copyright notice and this permission notice shall be included
+ * in all copies or substantial portions of the Software.
  *
- * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS 
- * OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, 
- * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE 
- * AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER 
- * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING 
- * FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS 
- * IN THE SOFTWARE. 
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
+ * OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+ * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+ * AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+ * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
+ * FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS
+ * IN THE SOFTWARE.
  *
  * (i.e. the MIT License)
  *
@@ -34,7 +34,7 @@ struct em8051;
 // Operation: returns number of ticks the operation should take
 typedef uint8_t (*em8051operation)(struct em8051 *aCPU);
 
-// Decodes opcode at position, and fills the buffer with the assembler code. 
+// Decodes opcode at position, and fills the buffer with the assembler code.
 // Returns how many bytes the opcode takes.
 typedef uint8_t (*em8051decoder)(struct em8051 *aCPU, uint16_t aPosition, char *aBuffer);
 
@@ -55,7 +55,7 @@ typedef void (*em8051sfrwrite)(struct em8051 *aCPU, uint8_t aRegister);
 typedef void (*em8051xwrite)(struct em8051 *aCPU, uint16_t aAddress, uint8_t aValue);
 
 // Callback: reading from external memory
-// Default is to return the value in external memory 
+// Default is to return the value in external memory
 // (can be used to control some peripherals)
 typedef uint8_t (*em8051xread)(struct em8051 *aCPU, uint16_t aAddress);
 
@@ -72,7 +72,7 @@ struct em8051
     uint16_t mPC; // Program Counter; outside memory area
     uint8_t mTickDelay; // How many ticks should we delay before continuing
     em8051operation op[256]; // function pointers to opcode handlers
-    em8051decoder dec[256]; // opcode-to-string decoder handlers    
+    em8051decoder dec[256]; // opcode-to-string decoder handlers
     em8051exception except; // callback: exceptional situation occurred
     em8051sfrread sfrread[128]; // callback array: SFR register being read
     em8051sfrwrite sfrwrite[128]; // callback array: SFR register written
@@ -80,11 +80,26 @@ struct em8051
     em8051xwrite xwrite; // callback: external memory being written
 
     // Internal values for interrupt services etc.
-    uint8_t mInterruptActive;
-    // Stored register values for interrupts (exception checking)
+#ifdef __SAB80C517__
+    // SAB80C517: 4-level priority system (0-3)
+    // Sentinel value 0xFF means "no interrupt active"
+    uint8_t mInterruptActive;   // Current priority level (0-3) or 0xFF if none
+    uint8_t int_a_517[4];       // ACC saved per priority level
+    uint8_t int_psw_517[4];     // PSW saved per priority level
+    uint8_t int_sp_517[4];      // SP saved per priority level
+    uint8_t irq_inhibit;        // IRQ inhibit counter (0=allow, >0=delay)
+
+    // Keep old arrays for ABI compatibility (unused in SAB80C517 mode)
     uint8_t int_a[2];
     uint8_t int_psw[2];
     uint8_t int_sp[2];
+#else
+    // 8051/8052: 2-level priority system
+    uint8_t mInterruptActive;   // 0=none, 1=low active, 2=high active
+    uint8_t int_a[2];           // ACC saved for low/high level
+    uint8_t int_psw[2];         // PSW saved for low/high level
+    uint8_t int_sp[2];          // SP saved for low/high level
+#endif
 
     // Internal handling of UART
     char serial_out[18]; // The shown size is only 18 chars
@@ -103,7 +118,7 @@ void reset(struct em8051 *aCPU, bool aWipe);
 bool tick(struct em8051 *aCPU);
 
 // decode the next operation as character string.
-// buffer must be big enough (64 bytes is very safe). 
+// buffer must be big enough (64 bytes is very safe).
 // Returns length of opcode.
 uint8_t decode(struct em8051 *aCPU, uint16_t aPosition, char *aBuffer);
 
@@ -149,6 +164,19 @@ enum SFR_REGS
     REG_RCAP2H = 0xCB - 0x80,
     REG_RCAP2L = 0xCA - 0x80,
 #endif // __8052__
+#ifdef __SAB80C517__
+    // SAB80C517 SFR addresses (NOTE: 0x80 offset in mSFR array indexing)
+    // CRITICAL: 0xB8 is IP in 8051 but IEN1 in SAB80C517!
+    REG_IEN0  = 0xA8 - 0x80,  // Interrupt Enable 0 (same address as IE)
+    REG_IEN1  = 0xB8 - 0x80,  // Interrupt Enable 1 (CONFLICT: IP in 8051!)
+    REG_IEN2  = 0x9A - 0x80,  // Interrupt Enable 2
+    REG_IP0   = 0xA9 - 0x80,  // Interrupt Priority 0 (low bit)
+    REG_IP1   = 0xB9 - 0x80,  // Interrupt Priority 1 (high bit)
+    REG_IRCON = 0xC0 - 0x80,  // Interrupt Request Control
+    REG_CTCON = 0xE1 - 0x80,  // Compare Timer Control
+    REG_S1CON = 0x9B - 0x80,  // Serial 1 Control
+    REG_S1BUF = 0x9C - 0x80,  // Serial 1 Buffer
+#endif // __SAB80C517__
 };
 
 enum PSW_BITS
@@ -243,6 +271,64 @@ enum T2MOD_MASKS
 };
 #endif
 
+#ifdef __SAB80C517__
+// SAB80C517: Sentinel value for "no interrupt active"
+// Must be distinct from valid priority levels 0-3
+#define SAB80C517_NO_INT_ACTIVE 0xFF
+
+// SAB80C517 Interrupt Enable Register 0 (IEN0) bit masks
+enum IEN0_MASKS
+{
+    IEN0MASK_EX0 = 0x01,  // External interrupt 0 enable
+    IEN0MASK_ET0 = 0x02,  // Timer 0 interrupt enable
+    IEN0MASK_EX1 = 0x04,  // External interrupt 1 enable
+    IEN0MASK_ET1 = 0x08,  // Timer 1 interrupt enable
+    IEN0MASK_ES0 = 0x10,  // Serial port 0 interrupt enable
+    IEN0MASK_ET2 = 0x20,  // Timer 2 interrupt enable
+    IEN0MASK_WDT = 0x40,  // Watchdog timer refresh flag
+    IEN0MASK_EA  = 0x80   // Global interrupt enable
+};
+
+// SAB80C517 Interrupt Enable Register 1 (IEN1) bit masks
+enum IEN1_MASKS
+{
+    IEN1MASK_EX2  = 0x01,  // External interrupt 2 enable
+    IEN1MASK_EX3  = 0x02,  // External interrupt 3 enable
+    IEN1MASK_EX4  = 0x04,  // External interrupt 4 enable
+    IEN1MASK_EX5  = 0x08,  // External interrupt 5 enable
+    IEN1MASK_EX6  = 0x10,  // External interrupt 6 enable
+    IEN1MASK_ES1  = 0x20,  // Serial port 1 interrupt enable
+    IEN1MASK_SWDT = 0x40,  // Software watchdog enable
+    IEN1MASK_EXF2 = 0x80   // Timer 2 external reload enable
+};
+
+// SAB80C517 Interrupt Enable Register 2 (IEN2) bit masks
+enum IEN2_MASKS
+{
+    IEN2MASK_IADC = 0x01,  // ADC interrupt enable
+    IEN2MASK_ECT  = 0x10   // Compare timer interrupt enable
+};
+
+// SAB80C517 Interrupt Request Control (IRCON) bit masks
+enum IRCON_MASKS
+{
+    IRCONMASK_IADC = 0x01,  // ADC conversion complete flag
+    IRCONMASK_IEX2 = 0x02,  // External interrupt 2 edge flag
+    IRCONMASK_IEX3 = 0x04,  // External interrupt 3 edge flag
+    IRCONMASK_IEX4 = 0x08,  // External interrupt 4 edge flag
+    IRCONMASK_IEX5 = 0x10,  // External interrupt 5 edge flag
+    IRCONMASK_IEX6 = 0x20,  // External interrupt 6 edge flag
+    IRCONMASK_TF2  = 0x40,  // Timer 2 overflow flag
+    IRCONMASK_EXF2 = 0x80   // Timer 2 external reload flag
+};
+
+// SAB80C517 Compare Timer Control (CTCON) bit masks
+enum CTCON_MASKS
+{
+    CTCONMASK_CTF = 0x01  // Compare timer flag
+};
+#endif // __SAB80C517__
+
 enum IP_MASKS
 {
     IPMASK_PX0 = 0x01,
@@ -285,6 +371,28 @@ enum ISR_VECTORS
     ISR_TF2  = 0x2B,
 #endif // __8052__
 };
+
+#ifdef __SAB80C517__
+// SAB80C517 ISR vectors (14 interrupt sources)
+enum ISR_VECTORS_80C517
+{
+    ISR_517_RST  = 0x00,  // Reset
+    ISR_517_INT0 = 0x03,  // External interrupt 0
+    ISR_517_TF0  = 0x0B,  // Timer 0 overflow
+    ISR_517_INT1 = 0x13,  // External interrupt 1
+    ISR_517_TF1  = 0x1B,  // Timer 1 overflow
+    ISR_517_SR0  = 0x23,  // Serial port 0 (RI0/TI0)
+    ISR_517_TF2  = 0x2B,  // Timer 2 overflow/external reload
+    ISR_517_IADC = 0x43,  // A/D converter
+    ISR_517_IEX2 = 0x4B,  // External interrupt 2
+    ISR_517_IEX3 = 0x53,  // External interrupt 3
+    ISR_517_IEX4 = 0x5B,  // External interrupt 4
+    ISR_517_IEX5 = 0x63,  // External interrupt 5
+    ISR_517_IEX6 = 0x6B,  // External interrupt 6
+    ISR_517_SR1  = 0x83,  // Serial port 1 (RI1/TI1)
+    ISR_517_CTF  = 0x9B   // Compare timer overflow
+};
+#endif // __SAB80C517__
 
 enum EM8051_EXCEPTION
 {

@@ -1,24 +1,24 @@
 /* 8051 emulator core
  * Copyright 2006 Jari Komppa
  *
- * Permission is hereby granted, free of charge, to any person obtaining 
- * a copy of this software and associated documentation files (the 
- * "Software"), to deal in the Software without restriction, including 
- * without limitation the rights to use, copy, modify, merge, publish, 
- * distribute, sublicense, and/or sell copies of the Software, and to 
- * permit persons to whom the Software is furnished to do so, subject 
- * to the following conditions: 
+ * Permission is hereby granted, free of charge, to any person obtaining
+ * a copy of this software and associated documentation files (the
+ * "Software"), to deal in the Software without restriction, including
+ * without limitation the rights to use, copy, modify, merge, publish,
+ * distribute, sublicense, and/or sell copies of the Software, and to
+ * permit persons to whom the Software is furnished to do so, subject
+ * to the following conditions:
  *
- * The above copyright notice and this permission notice shall be included 
- * in all copies or substantial portions of the Software. 
+ * The above copyright notice and this permission notice shall be included
+ * in all copies or substantial portions of the Software.
  *
- * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS 
- * OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, 
- * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE 
- * AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER 
- * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING 
- * FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS 
- * IN THE SOFTWARE. 
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
+ * OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+ * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+ * AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+ * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
+ * FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS
+ * IN THE SOFTWARE.
  *
  * (i.e. the MIT License)
  *
@@ -133,13 +133,13 @@ static void add_solve_flags(struct em8051 * aCPU, uint8_t value1, uint8_t value2
 {
     /* Carry: overflow from 7th bit to 8th bit */
     bool carry = ((value1 & 255) + (value2 & 255) + carryin) >> 8;
-    
+
     /* Auxiliary carry: overflow from 3th bit to 4th bit */
     bool auxcarry = ((value1 & 7) + (value2 & 7) + carryin) >> 3;
-    
+
     /* Overflow: overflow from 6th or 7th bit, but not both */
     bool overflow = (((value1 & 127) + (value2 & 127) + carryin) >> 7)^carry;
-    
+
     PSW = (PSW & ~(PSWMASK_C | PSWMASK_AC | PSWMASK_OV)) |
           (carry << PSW_C) | (auxcarry << PSW_AC) | (overflow << PSW_OV);
 }
@@ -157,7 +157,7 @@ static void sub_solve_flags(struct em8051 * aCPU, uint8_t value1, uint8_t value2
 static uint8_t ajmp_offset(struct em8051 *aCPU)
 {
     uint16_t address = ( (PC + 2) & 0xf800 ) |
-                  OPERAND1 | 
+                  OPERAND1 |
                   ((OPCODE & 0xe0) << 3);
 
     PC = address;
@@ -198,7 +198,7 @@ static uint8_t inc_mem(struct em8051 *aCPU)
 }
 
 static uint8_t inc_indir_rx(struct em8051 *aCPU)
-{    
+{
     uint8_t address = INDIR_RX_ADDRESS;
     uint8_t value = read_mem_indir(aCPU, address);
     write_mem_indir(aCPU, address, value + 1);
@@ -217,9 +217,9 @@ static uint8_t jbc_bitaddr_offset(struct em8051 *aCPU)
         uint8_t bitaddr = address & 7;
         uint8_t bitmask = (1 << bitaddr);
         uint8_t value;
-        address &= 0xf8;        
+        address &= 0xf8;
         value = aCPU->mSFR[address - 0x80];
-        
+
         if (value & bitmask)
         {
             aCPU->mSFR[address - 0x80] &= ~bitmask;
@@ -313,12 +313,12 @@ static uint8_t jb_bitaddr_offset(struct em8051 *aCPU)
         uint8_t bitaddr = address & 7;
         uint8_t bitmask = (1 << bitaddr);
         uint8_t value;
-        address &= 0xf8;        
+        address &= 0xf8;
         if (aCPU->sfrread[address - 0x80])
             value = aCPU->sfrread[address - 0x80](aCPU, address);
         else
             value = aCPU->mSFR[address - 0x80];
-        
+
         if (value & bitmask)
         {
             PC += (signed char)OPERAND2 + 3;
@@ -395,12 +395,12 @@ static uint8_t jnb_bitaddr_offset(struct em8051 *aCPU)
         uint8_t bitaddr = address & 7;
         uint8_t bitmask = (1 << bitaddr);
         uint8_t value;
-        address &= 0xf8;        
+        address &= 0xf8;
         if (aCPU->sfrread[address - 0x80])
             value = aCPU->sfrread[address - 0x80](aCPU, address);
         else
             value = aCPU->mSFR[address - 0x80];
-        
+
         if (!(value & bitmask))
         {
             PC += (signed char)OPERAND2 + 3;
@@ -430,6 +430,36 @@ static uint8_t jnb_bitaddr_offset(struct em8051 *aCPU)
 
 static uint8_t reti(struct em8051 *aCPU)
 {
+#ifdef __SAB80C517__
+    // SAB80C517: 4-level priority system
+    // Check if an interrupt is actually active (not sentinel value)
+    if (aCPU->mInterruptActive != SAB80C517_NO_INT_ACTIVE)
+    {
+        uint8_t level = aCPU->mInterruptActive;
+
+        // Validate register preservation (if exception callback enabled)
+        if (aCPU->except)
+        {
+            if (aCPU->int_a_517[level] != aCPU->mSFR[REG_ACC])
+                aCPU->except(aCPU, EXCEPTION_IRET_ACC_MISMATCH);
+            if (aCPU->int_sp_517[level] != aCPU->mSFR[REG_SP])
+                aCPU->except(aCPU, EXCEPTION_IRET_SP_MISMATCH);
+            if ((aCPU->int_psw_517[level] & 0xFD) != (aCPU->mSFR[REG_PSW] & 0xFD))
+                aCPU->except(aCPU, EXCEPTION_IRET_PSW_MISMATCH);
+        }
+
+        // Return to previous priority level or "no interrupt active"
+        // If returning from level 0, restore to sentinel value
+        if (level == 0)
+            aCPU->mInterruptActive = SAB80C517_NO_INT_ACTIVE;
+        else
+            aCPU->mInterruptActive = level - 1;
+
+        // Set IRQ inhibit (1-instruction delay per datasheet)
+        aCPU->irq_inhibit = 1;
+    }
+#else
+    // 8051/8052: 2-level priority system
     if (aCPU->mInterruptActive)
     {
         if (aCPU->except)
@@ -451,6 +481,7 @@ static uint8_t reti(struct em8051 *aCPU)
         else
             aCPU->mInterruptActive = 0;
     }
+#endif
 
     PC = pop_from_stack(aCPU) << 8;
     PC |= pop_from_stack(aCPU);
@@ -705,7 +736,7 @@ static uint8_t orl_c_bitaddr(struct em8051 *aCPU)
         uint8_t bitaddr = address & 7;
         uint8_t bitmask = (1 << bitaddr);
         uint8_t value;
-        address &= 0xf8;        
+        address &= 0xf8;
         if (aCPU->sfrread[address - 0x80])
             value = aCPU->sfrread[address - 0x80](aCPU, address);
         else
@@ -776,7 +807,7 @@ static uint8_t anl_c_bitaddr(struct em8051 *aCPU)
         uint8_t bitaddr = address & 7;
         uint8_t bitmask = (1 << bitaddr);
         uint8_t value;
-        address &= 0xf8;        
+        address &= 0xf8;
         if (aCPU->sfrread[address - 0x80])
             value = aCPU->sfrread[address - 0x80](aCPU, address);
         else
@@ -871,7 +902,7 @@ static uint8_t mov_bitaddr_c(struct em8051 *aCPU)
         // -- MCS(r) 51 Microcontroller Family User's Manual
         uint8_t bitaddr = address & 7;
         uint8_t bitmask = (1 << bitaddr);
-        address &= 0xf8;        
+        address &= 0xf8;
         aCPU->mSFR[address - 0x80] = (aCPU->mSFR[address - 0x80] & ~bitmask) | (carry << bitaddr);
         if (aCPU->sfrwrite[address - 0x80])
             aCPU->sfrwrite[address - 0x80](aCPU, address);
@@ -936,7 +967,7 @@ static uint8_t orl_c_compl_bitaddr(struct em8051 *aCPU)
         uint8_t bitaddr = address & 7;
         uint8_t bitmask = (1 << bitaddr);
         uint8_t value;
-        address &= 0xf8;        
+        address &= 0xf8;
         if (aCPU->sfrread[address - 0x80])
             value = aCPU->sfrread[address - 0x80](aCPU, address);
         else
@@ -968,7 +999,7 @@ static uint8_t mov_c_bitaddr(struct em8051 *aCPU)
         uint8_t bitaddr = address & 7;
         uint8_t bitmask = (1 << bitaddr);
         uint8_t value;
-        address &= 0xf8;        
+        address &= 0xf8;
         if (aCPU->sfrread[address - 0x80])
             value = aCPU->sfrread[address - 0x80](aCPU, address);
         else
@@ -1036,7 +1067,7 @@ static uint8_t anl_c_compl_bitaddr(struct em8051 *aCPU)
         uint8_t bitaddr = address & 7;
         uint8_t bitmask = (1 << bitaddr);
         uint8_t value;
-        address &= 0xf8;        
+        address &= 0xf8;
         if (aCPU->sfrread[address - 0x80])
             value = aCPU->sfrread[address - 0x80](aCPU, address);
         else
@@ -1071,7 +1102,7 @@ static uint8_t cpl_bitaddr(struct em8051 *aCPU)
         // -- MCS(r) 51 Microcontroller Family User's Manual
         uint8_t bitaddr = address & 7;
         uint8_t bitmask = (1 << bitaddr);
-        address &= 0xf8;        
+        address &= 0xf8;
         aCPU->mSFR[address - 0x80] ^= bitmask;
         if (aCPU->sfrwrite[address - 0x80])
             aCPU->sfrwrite[address - 0x80](aCPU, address);
@@ -1172,7 +1203,7 @@ static uint8_t cjne_indir_rx_imm_offset(struct em8051 *aCPU)
 static uint8_t push_mem(struct em8051 *aCPU)
 {
     uint8_t value = read_mem(aCPU, OPERAND1);
-    push_to_stack(aCPU, value);   
+    push_to_stack(aCPU, value);
     PC += 2;
     return 1;
 }
@@ -1188,7 +1219,7 @@ static uint8_t clr_bitaddr(struct em8051 *aCPU)
         // -- MCS(r) 51 Microcontroller Family User's Manual
         uint8_t bitaddr = address & 7;
         uint8_t bitmask = (1 << bitaddr);
-        address &= 0xf8;        
+        address &= 0xf8;
         aCPU->mSFR[address - 0x80] &= ~bitmask;
         if (aCPU->sfrwrite[address - 0x80])
             aCPU->sfrwrite[address - 0x80](aCPU, address);
@@ -1259,7 +1290,7 @@ static uint8_t setb_bitaddr(struct em8051 *aCPU)
         // -- MCS(r) 51 Microcontroller Family User's Manual
         uint8_t bitaddr = address & 7;
         uint8_t bitmask = (1 << bitaddr);
-        address &= 0xf8;        
+        address &= 0xf8;
         aCPU->mSFR[address - 0x80] |= bitmask;
         if (aCPU->sfrwrite[address - 0x80])
             aCPU->sfrwrite[address - 0x80](aCPU, address);
@@ -1527,7 +1558,7 @@ static uint8_t anl_a_rx(struct em8051 *aCPU)
 static uint8_t xrl_a_rx(struct em8051 *aCPU)
 {
     uint8_t rx = RX_ADDRESS;
-    ACC ^= aCPU->mLowerData[rx];    
+    ACC ^= aCPU->mLowerData[rx];
     PC++;
     return 0;
 }
@@ -1574,7 +1605,7 @@ static uint8_t cjne_rx_imm_offset(struct em8051 *aCPU)
 {
     uint8_t rx = RX_ADDRESS;
     uint8_t value = OPERAND1;
-    
+
     if (aCPU->mLowerData[rx] < value)
     {
         PSW |= PSWMASK_C;
