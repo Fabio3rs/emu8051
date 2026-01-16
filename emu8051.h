@@ -274,7 +274,9 @@ enum T2MOD_MASKS
 #ifdef __SAB80C517__
 // SAB80C517: Sentinel value for "no interrupt active"
 // Must be distinct from valid priority levels 0-3
-#define SAB80C517_NO_INT_ACTIVE 0xFF
+enum SAB80C517_INT_ACTIVE_ENUM {
+    SAB80C517_NO_INT_ACTIVE = 0xFF
+};
 
 // SAB80C517 Interrupt Enable Register 0 (IEN0) bit masks
 enum IEN0_MASKS
