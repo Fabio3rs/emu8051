@@ -636,14 +636,14 @@ void handle_interrupts_80c517(struct em8051 *aCPU)
             dest_ip = ISR_517_INT0;
         }
     }
-    if ((ien1 & IEN1MASK_ES1) && (aCPU->mSFR[REG_S1CON] & (SCONMASK_RI | SCONMASK_TI))) {
+    if ((ien2 & IEN2MASK_ES1) && (aCPU->mSFR[REG_S1CON] & (SCONMASK_RI | SCONMASK_TI))) {
         uint8_t pri = group_pri[0];
         if ((no_int_active || pri > current_level) && pri > highest_priority) {
             highest_priority = pri;
             dest_ip = ISR_517_SR1;
         }
     }
-    if ((ien2 & IEN2MASK_IADC) && (ircon & IRCONMASK_IADC)) {
+    if ((ien1 & IEN1MASK_EADC) && (ircon & IRCONMASK_IADC)) {
         uint8_t pri = group_pri[0];
         if ((no_int_active || pri > current_level) && pri > highest_priority) {
             highest_priority = pri;
@@ -724,7 +724,7 @@ void handle_interrupts_80c517(struct em8051 *aCPU)
 
     // Group 5 (IP0.5/IP1.5): TF2/EXF2, IEX6
     if ((ien0 & IEN0MASK_ET2) &&
-        ((ircon & IRCONMASK_TF2) || ((ircon & IRCONMASK_EXF2) && (ien1 & IEN1MASK_EXF2)))) {
+        ((ircon & IRCONMASK_TF2) || ((ircon & IRCONMASK_EXF2) && (ien1 & IEN1MASK_EXEN2)))) {
         uint8_t pri = group_pri[5];
         if ((no_int_active || pri > current_level) && (dest_ip < 0 || pri > highest_priority)) {
             highest_priority = pri;

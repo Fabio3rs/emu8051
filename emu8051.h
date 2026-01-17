@@ -292,23 +292,27 @@ enum IEN0_MASKS
 };
 
 // SAB80C517 Interrupt Enable Register 1 (IEN1) bit masks
+// Reference: SAB80C517 User's Manual, Figure 8-3 (Address 0B8H)
+// Bit-addresses: EADC=0xB8, EX2=0xB9, EX3=0xBA, EX4=0xBB, EX5=0xBC, EX6=0xBD, SWDT=0xBE, EXEN2=0xBF
 enum IEN1_MASKS
 {
-    IEN1MASK_EX2  = 0x01,  // External interrupt 2 enable
-    IEN1MASK_EX3  = 0x02,  // External interrupt 3 enable
-    IEN1MASK_EX4  = 0x04,  // External interrupt 4 enable
-    IEN1MASK_EX5  = 0x08,  // External interrupt 5 enable
-    IEN1MASK_EX6  = 0x10,  // External interrupt 6 enable
-    IEN1MASK_ES1  = 0x20,  // Serial port 1 interrupt enable
-    IEN1MASK_SWDT = 0x40,  // Software watchdog enable
-    IEN1MASK_EXF2 = 0x80   // Timer 2 external reload enable
+    IEN1MASK_EADC = 0x01,  // bit 0 - A/D converter interrupt enable
+    IEN1MASK_EX2  = 0x02,  // bit 1 - External interrupt 2 / CC4 enable
+    IEN1MASK_EX3  = 0x04,  // bit 2 - External interrupt 3 / CC0 enable
+    IEN1MASK_EX4  = 0x08,  // bit 3 - External interrupt 4 / CC1 enable
+    IEN1MASK_EX5  = 0x10,  // bit 4 - External interrupt 5 / CC2 enable
+    IEN1MASK_EX6  = 0x20,  // bit 5 - External interrupt 6 / CC3 enable
+    IEN1MASK_SWDT = 0x40,  // bit 6 - Software watchdog timer start
+    IEN1MASK_EXEN2= 0x80   // bit 7 - Timer 2 external reload enable
 };
 
 // SAB80C517 Interrupt Enable Register 2 (IEN2) bit masks
+// Reference: SAB80C517 User's Manual, Figure 8-4 (Address 09AH)
+// Note: IEN2 is NOT bit-addressable
 enum IEN2_MASKS
 {
-    IEN2MASK_IADC = 0x01,  // ADC interrupt enable
-    IEN2MASK_ECT  = 0x10   // Compare timer interrupt enable
+    IEN2MASK_ES1  = 0x01,  // bit 0 - Serial port 1 interrupt enable
+    IEN2MASK_ECT  = 0x10   // bit 4 - Compare timer interrupt enable
 };
 
 // SAB80C517 Interrupt Request Control (IRCON) bit masks
