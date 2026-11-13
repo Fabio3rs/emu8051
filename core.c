@@ -53,6 +53,7 @@ static void serial_tx(struct em8051 *aCPU) {
 }
 
 #ifdef __8052__
+#ifndef __SAB80C517__
 static bool timer2_add_increment(struct em8051 *aCPU, int8_t increment) {
     int16_t v = aCPU->mSFR[REG_TL2];
     v+=increment;
@@ -149,6 +150,20 @@ static void timer2_tick(struct em8051 *aCPU){
             }
         // Auto-reload
         } else if (aCPU->mSFR[REG_T2CON] & T2CONMASK_CPRL2) {
+// Disabled pending a C517-specific Timer 2 implementation: the manual says
+// CRC reloads Timer 2, and CPRL2 is T2I0 (input select) on this processor.
+#if 0
+            // SAB80C517: CRCL/CRCH (0xCA/0xCB) are used for Compare/Capture,
+            // NOT for Timer2 reload. Timer2 runs free (reload from 0x0000).
+            // This prevents the crankshaft capture values from affecting Timer2.
+            if (increment > 0) {
+                aCPU->mSFR[REG_TL2] = 0x00;
+                aCPU->mSFR[REG_TH2] = 0x00;
+            } else {
+                aCPU->mSFR[REG_TL2] = 0xff;
+                aCPU->mSFR[REG_TH2] = 0xff;
+            }
+#else
             if (increment > 0) {
                 aCPU->mSFR[REG_TL2] = aCPU->mSFR[REG_RCAP2L];
                 aCPU->mSFR[REG_TH2] = aCPU->mSFR[REG_RCAP2H];
@@ -156,11 +171,77 @@ static void timer2_tick(struct em8051 *aCPU){
                 aCPU->mSFR[REG_TL2] = 0xff;
                 aCPU->mSFR[REG_TH2] = 0xff;
             }
+#endif
         }
     }
 
     prev_t2 = aCPU->mSFR[REG_P1] & 1;
 }
+#else
+static void timer2_tick(struct em8051 *aCPU)
+{
+    uint8_t control = aCPU->mSFR[REG_T2CON];
+    uint8_t p1 = aCPU->mSFR[REG_P1];
+    uint8_t input = control & 0x03u; // T2I1:T2I0
+    bool count = false;
+
+    if (input == 1u || (input == 3u && (p1 & 0x80u))) {
+        // T2PS selects fOSC/12 or fOSC/24 in timer/gated mode.
+        if (control & 0x80u) {
+            aCPU->timer2_prescaler ^= 1u;
+            count = aCPU->timer2_prescaler == 0;
+        } else {
+            aCPU->timer2_prescaler = 0;
+            count = true;
+        }
+    } else if (input == 2u) {
+        count = aCPU->timer2_prev_t2 && !(p1 & 0x80u);
+    }
+
+    if (count) {
+        uint16_t value = (uint16_t)(((uint16_t)aCPU->mSFR[REG_TH2] << 8) |
+                                    aCPU->mSFR[REG_TL2]);
+        value++;
+        if (value == 0) {
+            aCPU->mSFR[REG_IRCON] |= IRCONMASK_TF2;
+            if ((control & 0x18u) == 0x10u) { // T2R1:T2R0 = 10
+                value = (uint16_t)(((uint16_t)aCPU->mSFR[REG_RCAP2H] << 8) |
+                                   aCPU->mSFR[REG_RCAP2L]);
+            }
+        }
+        aCPU->mSFR[REG_TL2] = (uint8_t)value;
+        aCPU->mSFR[REG_TH2] = (uint8_t)(value >> 8);
+    }
+    if ((control & 0x18u) == 0x18u && aCPU->timer2_prev_t2ex &&
+        !(p1 & 0x20u)) { // External reload on falling T2EX
+        aCPU->mSFR[REG_TL2] = aCPU->mSFR[REG_RCAP2L];
+        aCPU->mSFR[REG_TH2] = aCPU->mSFR[REG_RCAP2H];
+        if (aCPU->mSFR[REG_IEN1] & IEN1MASK_EXEN2)
+            aCPU->mSFR[REG_IRCON] |= IRCONMASK_EXF2;
+    }
+    static const uint8_t capture_low[4] = {REG_CRCL, REG_CCL1, REG_CCL2, REG_CCL3};
+    for (unsigned channel = 0; channel < 4; ++channel) {
+        if (aCPU->cc_capture_pending[channel] &&
+            --aCPU->cc_capture_pending[channel] == 0) {
+            aCPU->mSFR[capture_low[channel]] = aCPU->mSFR[REG_TL2];
+            aCPU->mSFR[capture_low[channel] + 1] = aCPU->mSFR[REG_TH2];
+        }
+    }
+    // Partial C517 CCU model: CC3 mode 1 transfers the P1.3 shadow at match.
+    // Compare interrupts, signal transparency and other channels are pending.
+    if (count && (control & 0x04u) &&
+        (aCPU->mSFR[REG_CCEN] & 0xC0u) == 0x80u) {
+        uint16_t timer = (uint16_t)(((uint16_t)aCPU->mSFR[REG_TH2] << 8) |
+                                    aCPU->mSFR[REG_TL2]);
+        uint16_t compare = (uint16_t)(((uint16_t)aCPU->mSFR[REG_CCH3] << 8) |
+                                      aCPU->mSFR[REG_CCL3]);
+        if (timer == compare)
+            aCPU->cc3_output_pin = (aCPU->mSFR[REG_P1] >> 3) & 1u;
+    }
+    aCPU->timer2_prev_t2 = (p1 & 0x80u) != 0;
+    aCPU->timer2_prev_t2ex = (p1 & 0x20u) != 0;
+}
+#endif
 #endif
 
 static void timer_tick(struct em8051 *aCPU)
@@ -793,6 +874,7 @@ void handle_interrupts_80c517(struct em8051 *aCPU)
     aCPU->int_a_517[highest_priority] = aCPU->mSFR[REG_ACC];
     aCPU->int_psw_517[highest_priority] = aCPU->mSFR[REG_PSW];
     aCPU->int_sp_517[highest_priority] = aCPU->mSFR[REG_SP];
+    aCPU->int_prev_level_517[highest_priority] = current_level;
 
     // Update active priority level
     aCPU->mInterruptActive = highest_priority;
@@ -878,6 +960,48 @@ uint8_t decode(struct em8051 *aCPU, uint16_t aPosition, char *aBuffer)
 void disasm_setptrs(struct em8051 *aCPU);
 void op_setptrs(struct em8051 *aCPU);
 
+#ifdef __SAB80C517__
+static void sfr_write_p2_page(struct em8051 *aCPU, uint8_t address)
+{
+    (void)address;
+    // 80C517A: writing P2 also loads XPAGE (Infineon D80517A, XRAM section).
+    aCPU->mSFR[REG_XPAGE] = aCPU->mSFR[REG_P2];
+}
+
+static bool cc3_compare_mode1(const struct em8051 *aCPU)
+{
+    return (aCPU->mSFR[REG_CCEN] & 0xC0u) == 0x80u &&
+           (aCPU->mSFR[REG_T2CON] & 0x04u);
+}
+
+static uint8_t sfr_read_p1_cc3(struct em8051 *aCPU, uint8_t address)
+{
+    uint8_t latch = aCPU->mSFR[REG_P1];
+    (void)address;
+    // Ordinary reads see the pin; bit write/read-modify-write ops use mSFR.
+    if (!cc3_compare_mode1(aCPU))
+        return latch;
+    return (latch & (uint8_t)~0x08u) | (aCPU->cc3_output_pin << 3);
+}
+
+static void sfr_write_cc3_mode(struct em8051 *aCPU, uint8_t address)
+{
+    (void)address;
+    if (!cc3_compare_mode1(aCPU))
+        aCPU->cc3_output_pin = (aCPU->mSFR[REG_P1] >> 3) & 1u;
+}
+
+static void sfr_write_cc_capture(struct em8051 *aCPU, uint8_t address)
+{
+    unsigned channel = address == 0xCA ? 0u : (unsigned)(address - 0xC0u) / 2u;
+    // CCEN channel=11: a low-byte write captures TL2:TH2 next cycle.
+    // Opcode writes happen before timer2_tick(), so two ticks defer one cycle.
+    if ((aCPU->mSFR[REG_CCEN] & (3u << (2u * channel))) ==
+        (3u << (2u * channel)))
+        aCPU->cc_capture_pending[channel] = 2;
+}
+#endif
+
 void reset(struct em8051 *aCPU, bool aWipe)
 {
     // clear memory, set registers to bootup values, etc
@@ -899,6 +1023,10 @@ void reset(struct em8051 *aCPU, bool aWipe)
     aCPU->mSFR[REG_P1] = 0xff;
     aCPU->mSFR[REG_P2] = 0xff;
     aCPU->mSFR[REG_P3] = 0xff;
+#ifdef __SAB80C517__
+    aCPU->mSFR[REG_XPAGE] = 0x00;
+    aCPU->mSFR[REG_SYSCON] = 0x01; // XMAP0=1: XRAM disabled after reset.
+#endif
 
     // Power-off flag will be 1 only after a power on (cold reset).
     // A warm reset doesn’t affect the value of this bit
@@ -920,6 +1048,11 @@ void reset(struct em8051 *aCPU, bool aWipe)
     aCPU->mInterruptActive = SAB80C517_NO_INT_ACTIVE;  // No interrupt active
     // Initialize SAB80C517 interrupt state
     aCPU->irq_inhibit = 0;
+    aCPU->timer2_prescaler = 0;
+    aCPU->timer2_prev_t2 = 1;
+    aCPU->timer2_prev_t2ex = 1;
+    aCPU->cc3_output_pin = 1;
+    memset(aCPU->cc_capture_pending, 0, sizeof(aCPU->cc_capture_pending));
 #else
     aCPU->mInterruptActive = 0;
 #endif
@@ -928,11 +1061,20 @@ void reset(struct em8051 *aCPU, bool aWipe)
 
     // Register SFR write callbacks for IRQ inhibit
     // These registers trigger 1-instruction delay before interrupt recognition
-    aCPU->sfrwrite[REG_IEN0 - 0x80] = sfr_write_irq_inhibit;
-    aCPU->sfrwrite[REG_IEN1 - 0x80] = sfr_write_irq_inhibit;
-    aCPU->sfrwrite[REG_IEN2 - 0x80] = sfr_write_irq_inhibit;
-    aCPU->sfrwrite[REG_IP0 - 0x80]  = sfr_write_irq_inhibit;
-    aCPU->sfrwrite[REG_IP1 - 0x80]  = sfr_write_irq_inhibit;
+    aCPU->sfrwrite[REG_IEN0] = sfr_write_irq_inhibit;
+    aCPU->sfrwrite[REG_IEN1] = sfr_write_irq_inhibit;
+    aCPU->sfrwrite[REG_IEN2] = sfr_write_irq_inhibit;
+    aCPU->sfrwrite[REG_IP0]  = sfr_write_irq_inhibit;
+    aCPU->sfrwrite[REG_IP1]  = sfr_write_irq_inhibit;
+    aCPU->sfrwrite[REG_P2] = sfr_write_p2_page;
+    aCPU->sfrread[REG_P1] = sfr_read_p1_cc3;
+    aCPU->sfrwrite[REG_P1] = sfr_write_cc3_mode;
+    aCPU->sfrwrite[REG_CCEN] = sfr_write_cc3_mode;
+    aCPU->sfrwrite[REG_T2CON] = sfr_write_cc3_mode;
+    aCPU->sfrwrite[REG_CRCL] = sfr_write_cc_capture;
+    aCPU->sfrwrite[REG_CCL1] = sfr_write_cc_capture;
+    aCPU->sfrwrite[REG_CCL2] = sfr_write_cc_capture;
+    aCPU->sfrwrite[REG_CCL3] = sfr_write_cc_capture;
 #endif
 
     // Clean Serial

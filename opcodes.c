@@ -62,6 +62,20 @@ static uint8_t read_mem(struct em8051 *aCPU, uint8_t aAddress)
     }
 }
 
+// Port destinations of read-modify-write instructions read the output latch,
+// including SAB80C517 ports P4..P6 (manual section 7.1.4.3).
+static uint8_t read_mem_rmw(struct em8051 *aCPU, uint8_t address)
+{
+    switch (address)
+    {
+    case 0x80: case 0x90: case 0xA0: case 0xB0:
+    case 0xE8: case 0xF8: case 0xFA:
+        return aCPU->mSFR[address - 0x80];
+    default:
+        return read_mem(aCPU, address);
+    }
+}
+
 static uint8_t read_mem_indir(struct em8051 *aCPU, uint8_t aAddress)
 {
     if (aAddress > 0x7f)
@@ -191,7 +205,7 @@ static uint8_t inc_a(struct em8051 *aCPU)
 static uint8_t inc_mem(struct em8051 *aCPU)
 {
     uint8_t address = OPERAND1;
-    uint8_t value = read_mem(aCPU, address);
+    uint8_t value = read_mem_rmw(aCPU, address);
     write_mem(aCPU, address, value + 1);
     PC += 2;
     return 0;
@@ -289,7 +303,7 @@ static uint8_t dec_a(struct em8051 *aCPU)
 static uint8_t dec_mem(struct em8051 *aCPU)
 {
     uint8_t address = OPERAND1;
-    uint8_t value = read_mem(aCPU, address);
+    uint8_t value = read_mem_rmw(aCPU, address);
     write_mem(aCPU, address, value - 1);
     PC += 2;
     return 0;
@@ -448,12 +462,7 @@ static uint8_t reti(struct em8051 *aCPU)
                 aCPU->except(aCPU, EXCEPTION_IRET_PSW_MISMATCH);
         }
 
-        // Return to previous priority level or "no interrupt active"
-        // If returning from level 0, restore to sentinel value
-        if (level == 0)
-            aCPU->mInterruptActive = SAB80C517_NO_INT_ACTIVE;
-        else
-            aCPU->mInterruptActive = level - 1;
+        aCPU->mInterruptActive = aCPU->int_prev_level_517[level];
 
         // Set IRQ inhibit (1-instruction delay per datasheet)
         aCPU->irq_inhibit = 1;
@@ -545,7 +554,7 @@ static uint8_t jc_offset(struct em8051 *aCPU)
 static uint8_t orl_mem_a(struct em8051 *aCPU)
 {
     uint8_t address = OPERAND1;
-    uint8_t value = read_mem(aCPU, address);
+    uint8_t value = read_mem_rmw(aCPU, address);
     write_mem(aCPU, address, value | ACC);
     PC += 2;
     return 0;
@@ -554,7 +563,7 @@ static uint8_t orl_mem_a(struct em8051 *aCPU)
 static uint8_t orl_mem_imm(struct em8051 *aCPU)
 {
     uint8_t address = OPERAND1;
-    uint8_t value = read_mem(aCPU, address);
+    uint8_t value = read_mem_rmw(aCPU, address);
     write_mem(aCPU, address, value | OPERAND2);
     PC += 3;
     return 1;
@@ -619,7 +628,7 @@ static uint8_t anl_mem_a(struct em8051 *aCPU)
 static uint8_t anl_mem_imm(struct em8051 *aCPU)
 {
     uint8_t address = OPERAND1;
-    uint8_t value = read_mem(aCPU, address);
+    uint8_t value = read_mem_rmw(aCPU, address);
     write_mem(aCPU, address, value & OPERAND2);
     PC += 3;
     return 1;
@@ -683,7 +692,7 @@ static uint8_t xrl_mem_a(struct em8051 *aCPU)
 static uint8_t xrl_mem_imm(struct em8051 *aCPU)
 {
     uint8_t address = OPERAND1;
-    uint8_t value = read_mem(aCPU, address);
+    uint8_t value = read_mem_rmw(aCPU, address);
     write_mem(aCPU, address, value ^ OPERAND2);
     PC += 3;
     return 1;
@@ -1348,7 +1357,7 @@ static uint8_t da_a(struct em8051 *aCPU)
 static uint8_t djnz_mem_offset(struct em8051 *aCPU)
 {
     uint8_t address = OPERAND1;
-    uint8_t value = read_mem(aCPU, address);
+    uint8_t value = read_mem_rmw(aCPU, address);
     value --;
     write_mem(aCPU, address, value);
 
@@ -1390,9 +1399,21 @@ static uint8_t movx_a_indir_dptr(struct em8051 *aCPU)
     return 1;
 }
 
+static uint16_t movx_indir_rx_address(struct em8051 *aCPU)
+{
+    uint8_t page = aCPU->mSFR[REG_P2];
+#ifdef __SAB80C517__
+    // 80C517A internal XRAM uses XPAGE when enabled and in F8h..FFh.
+    if ((aCPU->mSFR[REG_SYSCON] & 1) == 0 &&
+        aCPU->mSFR[REG_XPAGE] >= 0xF8)
+        page = aCPU->mSFR[REG_XPAGE];
+#endif
+    return (uint16_t)((page << 8) | INDIR_RX_ADDRESS);
+}
+
 static uint8_t movx_a_indir_rx(struct em8051 *aCPU)
 {
-    uint16_t address = INDIR_RX_ADDRESS;
+    uint16_t address = movx_indir_rx_address(aCPU);
     if (aCPU->xread)
     {
         ACC = aCPU->xread(aCPU, address);
@@ -1456,7 +1477,7 @@ static uint8_t movx_indir_dptr_a(struct em8051 *aCPU)
 
 static uint8_t movx_indir_rx_a(struct em8051 *aCPU)
 {
-    uint16_t address = INDIR_RX_ADDRESS;
+    uint16_t address = movx_indir_rx_address(aCPU);
 
     if (aCPU->xwrite)
     {
@@ -2129,4 +2150,3 @@ uint8_t do_op(struct em8051 *aCPU)
    }
     return 0;
 }
-

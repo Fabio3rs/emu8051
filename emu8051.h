@@ -87,7 +87,13 @@ struct em8051
     uint8_t int_a_517[4];       // ACC saved per priority level
     uint8_t int_psw_517[4];     // PSW saved per priority level
     uint8_t int_sp_517[4];      // SP saved per priority level
+    uint8_t int_prev_level_517[4]; // Interrupted priority, or no-active sentinel
     uint8_t irq_inhibit;        // IRQ inhibit counter (0=allow, >0=delay)
+    uint8_t timer2_prescaler;   // fOSC/24 uses every second machine cycle
+    uint8_t timer2_prev_t2;    // Previous P1.7 level
+    uint8_t timer2_prev_t2ex;  // Previous P1.5 level
+    uint8_t cc3_output_pin;    // P1.3 physical level, separate from port shadow latch
+    uint8_t cc_capture_pending[4]; // CRC, CC1, CC2, CC3 write captures
 
     // Keep old arrays for ABI compatibility (unused in SAB80C517 mode)
     uint8_t int_a[2];
@@ -167,12 +173,23 @@ enum SFR_REGS
 #ifdef __SAB80C517__
     // SAB80C517 SFR addresses (NOTE: 0x80 offset in mSFR array indexing)
     // CRITICAL: 0xB8 is IP in 8051 but IEN1 in SAB80C517!
+    REG_XPAGE = 0x91 - 0x80, // SAB80C517A XRAM page for MOVX @Ri
+    REG_SYSCON = 0xB1 - 0x80, // SAB80C517A XRAM enable (XMAP0)
     REG_IEN0  = 0xA8 - 0x80,  // Interrupt Enable 0 (same address as IE)
     REG_IEN1  = 0xB8 - 0x80,  // Interrupt Enable 1 (CONFLICT: IP in 8051!)
     REG_IEN2  = 0x9A - 0x80,  // Interrupt Enable 2
     REG_IP0   = 0xA9 - 0x80,  // Interrupt Priority 0 (low bit)
     REG_IP1   = 0xB9 - 0x80,  // Interrupt Priority 1 (high bit)
     REG_IRCON = 0xC0 - 0x80,  // Interrupt Request Control
+    REG_CCEN = 0xC1 - 0x80,   // Compare/capture enable
+    REG_CCL1 = 0xC2 - 0x80,
+    REG_CCH1 = 0xC3 - 0x80,
+    REG_CCL2 = 0xC4 - 0x80,
+    REG_CCH2 = 0xC5 - 0x80,
+    REG_CCL3 = 0xC6 - 0x80,   // Compare/capture register 3, low
+    REG_CCH3 = 0xC7 - 0x80,   // Compare/capture register 3, high
+    REG_CRCL = 0xCA - 0x80,
+    REG_CRCH = 0xCB - 0x80,
     REG_CTCON = 0xE1 - 0x80,  // Compare Timer Control
     REG_S1CON = 0x9B - 0x80,  // Serial 1 Control
     REG_S1BUF = 0x9C - 0x80,  // Serial 1 Buffer
@@ -409,4 +426,3 @@ enum EM8051_EXCEPTION
     EXCEPTION_IRET_ACC_MISMATCH, // acc not preserved over interrupt call
     EXCEPTION_ILLEGAL_OPCODE     // for the single 'reserved' opcode in the architecture
 };
-
