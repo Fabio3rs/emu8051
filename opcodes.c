@@ -882,11 +882,12 @@ static uint8_t mov_mem_mem(struct em8051 *aCPU)
 
 static uint8_t mov_mem_indir_rx(struct em8051 *aCPU)
 {
-    uint8_t address_from = OPERAND1;
-    uint8_t address_to = INDIR_RX_ADDRESS;
-    // FIX: Use read_mem() for direct source, write_mem_indir() for indirect dest
-    uint8_t value = read_mem(aCPU, address_from);
-    write_mem_indir(aCPU, address_to, value);
+    // Siemens SAB 80C517, Instruction Set, p. 218: MOV direct,@Ri
+    // encodes 1000 011i and copies indirect RAM into the direct byte.
+    uint8_t address_from = INDIR_RX_ADDRESS;
+    uint8_t address_to = OPERAND1;
+    uint8_t value = read_mem_indir(aCPU, address_from);
+    write_mem(aCPU, address_to, value);
     PC += 2;
     return 1;
 }
