@@ -59,6 +59,9 @@ typedef void (*em8051xwrite)(struct em8051 *aCPU, uint16_t aAddress, uint8_t aVa
 // (can be used to control some peripherals)
 typedef uint8_t (*em8051xread)(struct em8051 *aCPU, uint16_t aAddress);
 
+// Callback: reading code memory via MOVC instructions
+typedef void (*em8051coderead)(struct em8051 *aCPU, uint16_t aAddress);
+
 
 struct em8051
 {
@@ -78,6 +81,7 @@ struct em8051
     em8051sfrwrite sfrwrite[128]; // callback array: SFR register written
     em8051xread xread; // callback: external memory being read
     em8051xwrite xwrite; // callback: external memory being written
+    em8051coderead coderead; // callback: code memory read by MOVC
 
     // Internal values for interrupt services etc.
 #ifdef __SAB80C517__

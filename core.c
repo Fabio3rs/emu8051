@@ -514,7 +514,7 @@ static void timer_tick(struct em8051 *aCPU)
 static void sfr_write_irq_inhibit(struct em8051 *aCPU, uint8_t aRegister)
 {
     (void)aRegister;  // Unused parameter
-    aCPU->irq_inhibit = 1;  // Set 1-instruction delay
+    aCPU->irq_inhibit = 1;  // Inhibit next instruction before accepting IRQ
 }
 #endif // __SAB80C517__
 
@@ -631,9 +631,8 @@ void handle_interrupts(struct em8051 *aCPU)
     push_to_stack(aCPU, aCPU->mPC & 0xff);
     push_to_stack(aCPU, aCPU->mPC >> 8);
     aCPU->mPC = dest_ip;
-    // wait for 2 ticks instead of one since we were not executing
-    // this LCALL before.
-    aCPU->mTickDelay = 2;
+    // Hardware interrupt LCALL takes 2 machine cycles (1 dispatch cycle + 1 wait cycle)
+    aCPU->mTickDelay = 1;
     switch (dest_ip)
     {
     case ISR_TF0:
@@ -719,14 +718,14 @@ void handle_interrupts_80c517(struct em8051 *aCPU)
     }
     if ((ien2 & IEN2MASK_ES1) && (aCPU->mSFR[REG_S1CON] & (SCONMASK_RI | SCONMASK_TI))) {
         uint8_t pri = group_pri[0];
-        if ((no_int_active || pri > current_level) && pri > highest_priority) {
+        if ((no_int_active || pri > current_level) && (dest_ip < 0 || pri > highest_priority)) {
             highest_priority = pri;
             dest_ip = ISR_517_SR1;
         }
     }
     if ((ien1 & IEN1MASK_EADC) && (ircon & IRCONMASK_IADC)) {
         uint8_t pri = group_pri[0];
-        if ((no_int_active || pri > current_level) && pri > highest_priority) {
+        if ((no_int_active || pri > current_level) && (dest_ip < 0 || pri > highest_priority)) {
             highest_priority = pri;
             dest_ip = ISR_517_IADC;
         }
@@ -742,7 +741,7 @@ void handle_interrupts_80c517(struct em8051 *aCPU)
     }
     if ((ien1 & IEN1MASK_EX2) && (ircon & IRCONMASK_IEX2)) {
         uint8_t pri = group_pri[1];
-        if ((no_int_active || pri > current_level) && pri > highest_priority) {
+        if ((no_int_active || pri > current_level) && (dest_ip < 0 || pri > highest_priority)) {
             highest_priority = pri;
             dest_ip = ISR_517_IEX2;
         }
@@ -758,7 +757,7 @@ void handle_interrupts_80c517(struct em8051 *aCPU)
     }
     if ((ien1 & IEN1MASK_EX3) && (ircon & IRCONMASK_IEX3)) {
         uint8_t pri = group_pri[2];
-        if ((no_int_active || pri > current_level) && pri > highest_priority) {
+        if ((no_int_active || pri > current_level) && (dest_ip < 0 || pri > highest_priority)) {
             highest_priority = pri;
             dest_ip = ISR_517_IEX3;
         }
@@ -774,14 +773,14 @@ void handle_interrupts_80c517(struct em8051 *aCPU)
     }
     if ((ien2 & IEN2MASK_ECT) && (aCPU->mSFR[REG_CTCON] & CTCONMASK_CTF)) {
         uint8_t pri = group_pri[3];
-        if ((no_int_active || pri > current_level) && pri > highest_priority) {
+        if ((no_int_active || pri > current_level) && (dest_ip < 0 || pri > highest_priority)) {
             highest_priority = pri;
             dest_ip = ISR_517_CTF;
         }
     }
     if ((ien1 & IEN1MASK_EX4) && (ircon & IRCONMASK_IEX4)) {
         uint8_t pri = group_pri[3];
-        if ((no_int_active || pri > current_level) && pri > highest_priority) {
+        if ((no_int_active || pri > current_level) && (dest_ip < 0 || pri > highest_priority)) {
             highest_priority = pri;
             dest_ip = ISR_517_IEX4;
         }
@@ -797,7 +796,7 @@ void handle_interrupts_80c517(struct em8051 *aCPU)
     }
     if ((ien1 & IEN1MASK_EX5) && (ircon & IRCONMASK_IEX5)) {
         uint8_t pri = group_pri[4];
-        if ((no_int_active || pri > current_level) && pri > highest_priority) {
+        if ((no_int_active || pri > current_level) && (dest_ip < 0 || pri > highest_priority)) {
             highest_priority = pri;
             dest_ip = ISR_517_IEX5;
         }
@@ -814,7 +813,7 @@ void handle_interrupts_80c517(struct em8051 *aCPU)
     }
     if ((ien1 & IEN1MASK_EX6) && (ircon & IRCONMASK_IEX6)) {
         uint8_t pri = group_pri[5];
-        if ((no_int_active || pri > current_level) && pri > highest_priority) {
+        if ((no_int_active || pri > current_level) && (dest_ip < 0 || pri > highest_priority)) {
             highest_priority = pri;
             dest_ip = ISR_517_IEX6;
         }
@@ -829,7 +828,8 @@ void handle_interrupts_80c517(struct em8051 *aCPU)
     push_to_stack(aCPU, aCPU->mPC & 0xff);
     push_to_stack(aCPU, aCPU->mPC >> 8);
     aCPU->mPC = dest_ip;
-    aCPU->mTickDelay = 2;
+    // Hardware interrupt LCALL takes 2 machine cycles (1 dispatch cycle + 1 wait cycle)
+    aCPU->mTickDelay = 1;
 
     // Clear interrupt flags (hardware auto-clear policy per datasheet)
     switch (dest_ip) {
@@ -889,6 +889,11 @@ bool tick(struct em8051 *aCPU)
     if (aCPU->mTickDelay)
     {
         aCPU->mTickDelay--;
+        timer_tick(aCPU);
+#ifdef __8052__
+        timer2_tick(aCPU);
+#endif
+        return false;
     }
 
     // Test for Power Down
@@ -904,13 +909,11 @@ bool tick(struct em8051 *aCPU)
     if (aCPU->mTickDelay == 0)
     {
 #ifdef __SAB80C517__
-        // Decrement IRQ inhibit counter
-        if (aCPU->irq_inhibit > 0)
-            aCPU->irq_inhibit--;
-
-        // Only handle interrupts if not inhibited
+        // Only handle interrupts if not inhibited; inhibit gives 1 instruction delay
         if (aCPU->irq_inhibit == 0)
             handle_interrupts_80c517(aCPU);
+        else
+            aCPU->irq_inhibit--;
 #else
         handle_interrupts(aCPU);
 #endif
@@ -1007,8 +1010,10 @@ void reset(struct em8051 *aCPU, bool aWipe)
     // clear memory, set registers to bootup values, etc
     if (aWipe)
     {
-        memset(aCPU->mCodeMem, 0, aCPU->mCodeMemMaxIdx+1);
-        memset(aCPU->mExtData, 0, aCPU->mExtDataMaxIdx+1);
+        if (aCPU->mCodeMem)
+            memset(aCPU->mCodeMem, 0, aCPU->mCodeMemMaxIdx+1);
+        if (aCPU->mExtData)
+            memset(aCPU->mExtData, 0, aCPU->mExtDataMaxIdx+1);
         memset(aCPU->mLowerData, 0, 128);
         if (aCPU->mUpperData)
             memset(aCPU->mUpperData, 0, 128);
@@ -1018,6 +1023,7 @@ void reset(struct em8051 *aCPU, bool aWipe)
 
     aCPU->mPC = 0;
     aCPU->mTickDelay = 0;
+    aCPU->coderead = NULL;
     aCPU->mSFR[REG_SP] = 7;
     aCPU->mSFR[REG_P0] = 0xff;
     aCPU->mSFR[REG_P1] = 0xff;

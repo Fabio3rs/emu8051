@@ -148,8 +148,8 @@ static void add_solve_flags(struct em8051 * aCPU, uint8_t value1, uint8_t value2
     /* Carry: overflow from 7th bit to 8th bit */
     bool carry = ((value1 & 255) + (value2 & 255) + carryin) >> 8;
 
-    /* Auxiliary carry: overflow from 3th bit to 4th bit */
-    bool auxcarry = ((value1 & 7) + (value2 & 7) + carryin) >> 3;
+    /* Auxiliary carry: overflow from 3rd bit to 4th bit */
+    bool auxcarry = (((value1 & 0x0F) + (value2 & 0x0F) + carryin) >> 4) & 1;
 
     /* Overflow: overflow from 6th or 7th bit, but not both */
     bool overflow = (((value1 & 127) + (value2 & 127) + carryin) >> 7)^carry;
@@ -160,8 +160,8 @@ static void add_solve_flags(struct em8051 * aCPU, uint8_t value1, uint8_t value2
 
 static void sub_solve_flags(struct em8051 * aCPU, uint8_t value1, uint8_t value2, bool carryin)
 {
-    bool carry = (((value1 & 255) - (value2 & 255) - carryin) >> 8) & 1;
-    bool auxcarry = (((value1 & 7) - (value2 & 7) - carryin) >> 3) & 1;
+    bool carry = (value1 < ((value2 & 255) + (carryin ? 1 : 0)));
+    bool auxcarry = ((value1 & 0x0F) < ((value2 & 0x0F) + (carryin ? 1 : 0)));
     bool overflow = ((((value1 & 127) - (value2 & 127) - carryin) >> 7) & 1)^carry;
     PSW = (PSW & ~(PSWMASK_C|PSWMASK_AC|PSWMASK_OV)) |
                           (carry << PSW_C) | (auxcarry << PSW_AC) | (overflow << PSW_OV);
@@ -843,9 +843,11 @@ static uint8_t anl_c_bitaddr(struct em8051 *aCPU)
 static uint8_t movc_a_indir_a_pc(struct em8051 *aCPU)
 {
     uint16_t address = PC + 1 + ACC;
+    if (aCPU->coderead)
+        aCPU->coderead(aCPU, address);
     ACC = CODEMEM(address);
     PC++;
-    return 0;
+    return 1;
 }
 
 static uint8_t div_ab(struct em8051 *aCPU)
@@ -932,6 +934,8 @@ static uint8_t mov_bitaddr_c(struct em8051 *aCPU)
 static uint8_t movc_a_indir_a_dptr(struct em8051 *aCPU)
 {
     uint16_t address = DPTR + ACC;
+    if (aCPU->coderead)
+        aCPU->coderead(aCPU, address);
     ACC = CODEMEM(address);
     PC++;
     return 1;
